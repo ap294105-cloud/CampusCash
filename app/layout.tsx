@@ -19,6 +19,8 @@ export const metadata: Metadata = {
   metadataBase: new URL('https://campus-cash-student-budget.ap294105.chatgpt.site'),
   title: 'Campus Cash — Student Budget Dashboard',
   description: 'A private, practical college budget tracker for spending, savings, fees, and goals.',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'Campus Cash', statusBarStyle: 'default' },
   openGraph: {
     title: 'Campus Cash — Student Budget Dashboard',
     description: 'Student finance, sorted. Track spending, budgets, savings, fees, and goals in one place.',

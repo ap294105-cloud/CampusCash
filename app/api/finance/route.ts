@@ -166,7 +166,7 @@ function normalizeRows(rows: D1Row[]) {
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const user = await getChatGPTUser();
   if (!user) {
     return Response.json({ error: 'Authentication required.' }, { status: 401 });
@@ -196,6 +196,21 @@ export async function GET() {
         .bind(user.userId)
         .all<D1Row>(),
     ]);
+
+    if (new URL(request.url).searchParams.get('format') === 'csv') {
+      const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+      const header = ['Date', 'Description', 'Type', 'Category', 'Amount (INR)', 'Account', 'Payment method', 'Note'];
+      const lines = normalizeRows(transactions.results).map((row) => [
+        row.occurredOn, row.description, row.type, row.category,
+        Number(row.amountPaise) / 100, row.account, row.paymentMethod, row.note,
+      ].map(escape).join(','));
+      return new Response([header.join(','), ...lines].join('\n'), {
+        headers: {
+          'content-type': 'text/csv; charset=utf-8',
+          'content-disposition': 'attachment; filename="campus-cash-backup.csv"',
+        },
+      });
+    }
 
     return Response.json({
       transactions: normalizeRows(transactions.results),
@@ -308,6 +323,16 @@ export async function POST(request: Request) {
         .prepare('DELETE FROM student_transactions WHERE user_id = ? AND is_demo = 1')
         .bind(user.userId)
         .run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'deleteMyData') {
+      await db.batch([
+        db.prepare('DELETE FROM student_transactions WHERE user_id = ?').bind(user.userId),
+        db.prepare('DELETE FROM student_budgets WHERE user_id = ?').bind(user.userId),
+        db.prepare('DELETE FROM student_goals WHERE user_id = ?').bind(user.userId),
+        db.prepare('DELETE FROM student_accounts WHERE user_id = ?').bind(user.userId),
+      ]);
       return Response.json({ ok: true });
     }
 
