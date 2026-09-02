@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('http://localhost:3000'),
+  metadataBase: new URL('https://campus-cash-student-budget.ap294105.chatgpt.site'),
   title: 'Campus Cash — Student Budget Dashboard',
   description: 'A private, practical college budget tracker for spending, savings, fees, and goals.',
   openGraph: {
