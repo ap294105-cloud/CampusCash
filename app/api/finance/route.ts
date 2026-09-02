@@ -1,10 +1,21 @@
 import { env } from 'cloudflare:workers';
 
+import { getChatGPTUser, type ChatGPTUser } from '@/app/chatgpt-auth';
+
 type D1Row = Record<string, string | number | null>;
 
 const schemaStatements = [
-  `CREATE TABLE IF NOT EXISTS transactions (
+  `CREATE TABLE IF NOT EXISTS student_profiles (
+    user_id TEXT PRIMARY KEY,
+    email TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    demo_initialized INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS student_transactions (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     description TEXT NOT NULL,
     amount_paise INTEGER NOT NULL,
     type TEXT NOT NULL,
@@ -16,26 +27,36 @@ const schemaStatements = [
     is_demo INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS budgets (
-    category TEXT PRIMARY KEY,
-    monthly_limit_paise INTEGER NOT NULL
+  `CREATE TABLE IF NOT EXISTS student_budgets (
+    user_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    monthly_limit_paise INTEGER NOT NULL,
+    PRIMARY KEY (user_id, category)
   )`,
-  `CREATE TABLE IF NOT EXISTS goals (
+  `CREATE TABLE IF NOT EXISTS student_goals (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     name TEXT NOT NULL,
     target_paise INTEGER NOT NULL,
     current_paise INTEGER NOT NULL,
     deadline TEXT NOT NULL,
     kind TEXT NOT NULL
   )`,
-  `CREATE TABLE IF NOT EXISTS accounts (
+  `CREATE TABLE IF NOT EXISTS student_accounts (
     id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
     name TEXT NOT NULL,
     type TEXT NOT NULL,
     balance_paise INTEGER NOT NULL
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_transactions_date_type ON transactions(occurred_on, type)`,
-  `CREATE INDEX IF NOT EXISTS idx_transactions_category_date ON transactions(category, occurred_on)`,
+  `CREATE INDEX IF NOT EXISTS idx_student_transactions_user_date_type
+    ON student_transactions(user_id, occurred_on, type)`,
+  `CREATE INDEX IF NOT EXISTS idx_student_transactions_user_category_date
+    ON student_transactions(user_id, category, occurred_on)`,
+  `CREATE INDEX IF NOT EXISTS idx_student_goals_user
+    ON student_goals(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_student_accounts_user
+    ON student_accounts(user_id)`,
 ];
 
 const demoTransactions = [
@@ -57,18 +78,34 @@ const demoTransactions = [
   ['expense-jul', 'July living costs', 1180000, 'expense', 'Hostel', '2026-07-25', 'UPI wallet', 'UPI'],
 ] as const;
 
-async function ensureDatabase() {
+async function ensureStudentWorkspace(user: ChatGPTUser) {
   const db = env.DB;
   await db.batch(schemaStatements.map((sql) => db.prepare(sql)));
 
-  const count = await db.prepare('SELECT COUNT(*) AS count FROM transactions').first<{ count: number }>();
-  if ((count?.count ?? 0) === 0) {
+  const now = new Date().toISOString();
+  await db
+    .prepare(`INSERT INTO student_profiles
+      (user_id, email, display_name, demo_initialized, created_at, updated_at)
+      VALUES (?, ?, ?, 0, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        email = excluded.email,
+        display_name = excluded.display_name,
+        updated_at = excluded.updated_at`)
+    .bind(user.userId, user.email, user.displayName, now, now)
+    .run();
+
+  const profile = await db
+    .prepare('SELECT demo_initialized AS demoInitialized FROM student_profiles WHERE user_id = ?')
+    .bind(user.userId)
+    .first<{ demoInitialized: number }>();
+
+  if (!profile?.demoInitialized) {
     const transactionStatements = demoTransactions.map((row) =>
       db
-        .prepare(`INSERT INTO transactions
-          (id, description, amount_paise, type, category, occurred_on, account, payment_method, note, is_demo, created_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, '', 1, ?)`)
-        .bind(...row, new Date().toISOString()),
+        .prepare(`INSERT OR IGNORE INTO student_transactions
+          (id, user_id, description, amount_paise, type, category, occurred_on, account, payment_method, note, is_demo, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', 1, ?)`)
+        .bind(`${user.userId}:${row[0]}`, user.userId, ...row.slice(1), now),
     );
 
     const budgetRows = [
@@ -77,7 +114,9 @@ async function ensureDatabase() {
       ['Personal', 200000], ['Subscriptions', 100000],
     ];
     const budgetStatements = budgetRows.map((row) =>
-      db.prepare('INSERT OR IGNORE INTO budgets (category, monthly_limit_paise) VALUES (?, ?)').bind(...row),
+      db
+        .prepare('INSERT OR IGNORE INTO student_budgets (user_id, category, monthly_limit_paise) VALUES (?, ?, ?)')
+        .bind(user.userId, ...row),
     );
 
     const goalRows = [
@@ -86,7 +125,9 @@ async function ensureDatabase() {
       ['course', 'Data science certification', 1500000, 450000, '2026-12-31', 'Learning'],
     ];
     const goalStatements = goalRows.map((row) =>
-      db.prepare('INSERT OR IGNORE INTO goals (id, name, target_paise, current_paise, deadline, kind) VALUES (?, ?, ?, ?, ?, ?)').bind(...row),
+      db
+        .prepare('INSERT OR IGNORE INTO student_goals (id, user_id, name, target_paise, current_paise, deadline, kind) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(`${user.userId}:${row[0]}`, user.userId, ...row.slice(1)),
     );
 
     const accountRows = [
@@ -96,10 +137,20 @@ async function ensureDatabase() {
       ['savings', 'Savings account', 'Savings', 950000],
     ];
     const accountStatements = accountRows.map((row) =>
-      db.prepare('INSERT OR IGNORE INTO accounts (id, name, type, balance_paise) VALUES (?, ?, ?, ?)').bind(...row),
+      db
+        .prepare('INSERT OR IGNORE INTO student_accounts (id, user_id, name, type, balance_paise) VALUES (?, ?, ?, ?, ?)')
+        .bind(`${user.userId}:${row[0]}`, user.userId, ...row.slice(1)),
     );
 
-    await db.batch([...transactionStatements, ...budgetStatements, ...goalStatements, ...accountStatements]);
+    await db.batch([
+      ...transactionStatements,
+      ...budgetStatements,
+      ...goalStatements,
+      ...accountStatements,
+      db
+        .prepare('UPDATE student_profiles SET demo_initialized = 1, updated_at = ? WHERE user_id = ?')
+        .bind(now, user.userId),
+    ]);
     await db.prepare('PRAGMA optimize').run();
   }
 }
@@ -116,14 +167,34 @@ function normalizeRows(rows: D1Row[]) {
 }
 
 export async function GET() {
+  const user = await getChatGPTUser();
+  if (!user) {
+    return Response.json({ error: 'Authentication required.' }, { status: 401 });
+  }
+
   try {
-    await ensureDatabase();
+    await ensureStudentWorkspace(user);
     const db = env.DB;
     const [transactions, budgets, goals, accounts] = await Promise.all([
-      db.prepare('SELECT * FROM transactions ORDER BY occurred_on DESC, created_at DESC').all<D1Row>(),
-      db.prepare('SELECT * FROM budgets ORDER BY category').all<D1Row>(),
-      db.prepare('SELECT * FROM goals ORDER BY deadline').all<D1Row>(),
-      db.prepare('SELECT * FROM accounts ORDER BY name').all<D1Row>(),
+      db
+        .prepare(`SELECT id, description, amount_paise, type, category, occurred_on, account,
+          payment_method, note, is_demo, created_at
+          FROM student_transactions WHERE user_id = ?
+          ORDER BY occurred_on DESC, created_at DESC`)
+        .bind(user.userId)
+        .all<D1Row>(),
+      db
+        .prepare('SELECT category, monthly_limit_paise FROM student_budgets WHERE user_id = ? ORDER BY category')
+        .bind(user.userId)
+        .all<D1Row>(),
+      db
+        .prepare('SELECT id, name, target_paise, current_paise, deadline, kind FROM student_goals WHERE user_id = ? ORDER BY deadline')
+        .bind(user.userId)
+        .all<D1Row>(),
+      db
+        .prepare('SELECT id, name, type, balance_paise FROM student_accounts WHERE user_id = ? ORDER BY name')
+        .bind(user.userId)
+        .all<D1Row>(),
     ]);
 
     return Response.json({
@@ -133,13 +204,21 @@ export async function GET() {
       accounts: normalizeRows(accounts.results),
     });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Unable to load finance data.' }, { status: 500 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : 'Unable to load finance data.' },
+      { status: 500 },
+    );
   }
 }
 
 export async function POST(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) {
+    return Response.json({ error: 'Authentication required.' }, { status: 401 });
+  }
+
   try {
-    await ensureDatabase();
+    await ensureStudentWorkspace(user);
     const body = (await request.json()) as Record<string, unknown>;
     const action = String(body.action ?? 'transaction');
     const db = env.DB;
@@ -148,18 +227,41 @@ export async function POST(request: Request) {
       const description = String(body.description ?? '').trim();
       const type = String(body.type ?? 'expense');
       const category = String(body.category ?? 'Personal');
-      const occurredOn = String(body.occurredOn ?? new Date().toISOString().slice(0, 10));
+      const occurredOn = String(
+        body.occurredOn ?? new Date().toISOString().slice(0, 10),
+      );
       const account = String(body.account ?? 'UPI wallet');
       const paymentMethod = String(body.paymentMethod ?? 'UPI');
       const amount = Number(body.amount);
-      if (!description || !Number.isFinite(amount) || amount <= 0 || !['income', 'expense', 'savings'].includes(type)) {
-        return Response.json({ error: 'Please enter a valid description, amount, and transaction type.' }, { status: 400 });
+      if (
+        !description ||
+        !Number.isFinite(amount) ||
+        amount <= 0 ||
+        !['income', 'expense', 'savings'].includes(type)
+      ) {
+        return Response.json(
+          { error: 'Please enter a valid description, amount, and transaction type.' },
+          { status: 400 },
+        );
       }
       const id = crypto.randomUUID();
-      await db.prepare(`INSERT INTO transactions
-        (id, description, amount_paise, type, category, occurred_on, account, payment_method, note, is_demo, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)
-        .bind(id, description, Math.round(amount * 100), type, category, occurredOn, account, paymentMethod, String(body.note ?? ''), new Date().toISOString())
+      await db
+        .prepare(`INSERT INTO student_transactions
+          (id, user_id, description, amount_paise, type, category, occurred_on, account, payment_method, note, is_demo, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`)
+        .bind(
+          id,
+          user.userId,
+          description,
+          Math.round(amount * 100),
+          type,
+          category,
+          occurredOn,
+          account,
+          paymentMethod,
+          String(body.note ?? ''),
+          new Date().toISOString(),
+        )
         .run();
       return Response.json({ ok: true, id });
     }
@@ -168,11 +270,18 @@ export async function POST(request: Request) {
       const category = String(body.category ?? '').trim();
       const monthlyLimit = Number(body.monthlyLimit);
       if (!category || !Number.isFinite(monthlyLimit) || monthlyLimit < 0) {
-        return Response.json({ error: 'Please enter a valid category and monthly limit.' }, { status: 400 });
+        return Response.json(
+          { error: 'Please enter a valid category and monthly limit.' },
+          { status: 400 },
+        );
       }
-      await db.prepare(`INSERT INTO budgets (category, monthly_limit_paise) VALUES (?, ?)
-        ON CONFLICT(category) DO UPDATE SET monthly_limit_paise = excluded.monthly_limit_paise`)
-        .bind(category, Math.round(monthlyLimit * 100)).run();
+      await db
+        .prepare(`INSERT INTO student_budgets (user_id, category, monthly_limit_paise)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id, category) DO UPDATE SET
+            monthly_limit_paise = excluded.monthly_limit_paise`)
+        .bind(user.userId, category, Math.round(monthlyLimit * 100))
+        .run();
       return Response.json({ ok: true });
     }
 
@@ -180,32 +289,58 @@ export async function POST(request: Request) {
       const goalId = String(body.goalId ?? '');
       const amount = Number(body.amount);
       if (!goalId || !Number.isFinite(amount) || amount <= 0) {
-        return Response.json({ error: 'Please enter a valid contribution.' }, { status: 400 });
+        return Response.json(
+          { error: 'Please enter a valid contribution.' },
+          { status: 400 },
+        );
       }
-      await db.prepare('UPDATE goals SET current_paise = MIN(target_paise, current_paise + ?) WHERE id = ?')
-        .bind(Math.round(amount * 100), goalId).run();
+      await db
+        .prepare(`UPDATE student_goals
+          SET current_paise = MIN(target_paise, current_paise + ?)
+          WHERE id = ? AND user_id = ?`)
+        .bind(Math.round(amount * 100), goalId, user.userId)
+        .run();
       return Response.json({ ok: true });
     }
 
     if (action === 'resetDemo') {
-      await db.prepare('DELETE FROM transactions WHERE is_demo = 1').run();
+      await db
+        .prepare('DELETE FROM student_transactions WHERE user_id = ? AND is_demo = 1')
+        .bind(user.userId)
+        .run();
       return Response.json({ ok: true });
     }
 
     return Response.json({ error: 'Unknown action.' }, { status: 400 });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Unable to save finance data.' }, { status: 500 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : 'Unable to save finance data.' },
+      { status: 500 },
+    );
   }
 }
 
 export async function DELETE(request: Request) {
+  const user = await getChatGPTUser();
+  if (!user) {
+    return Response.json({ error: 'Authentication required.' }, { status: 401 });
+  }
+
   try {
-    await ensureDatabase();
+    await ensureStudentWorkspace(user);
     const id = new URL(request.url).searchParams.get('id');
-    if (!id) return Response.json({ error: 'Transaction id is required.' }, { status: 400 });
-    await env.DB.prepare('DELETE FROM transactions WHERE id = ?').bind(id).run();
+    if (!id) {
+      return Response.json({ error: 'Transaction id is required.' }, { status: 400 });
+    }
+    await env.DB
+      .prepare('DELETE FROM student_transactions WHERE id = ? AND user_id = ?')
+      .bind(id, user.userId)
+      .run();
     return Response.json({ ok: true });
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : 'Unable to delete transaction.' }, { status: 500 });
+    return Response.json(
+      { error: error instanceof Error ? error.message : 'Unable to delete transaction.' },
+      { status: 500 },
+    );
   }
 }

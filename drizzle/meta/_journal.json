@@ -15,6 +15,13 @@
       "when": 1788353608355,
       "tag": "0001_flawless_ted_forrester",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788355095541,
+      "tag": "0002_flaky_frog_thor",
+      "breakpoints": true
     }
   ]
 }

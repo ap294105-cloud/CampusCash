@@ -20,6 +20,7 @@ import {
   Laptop,
   LayoutDashboard,
   Loader2,
+  LogOut,
   PiggyBank,
   Plus,
   ReceiptText,
@@ -33,6 +34,7 @@ import {
   TrendingDown,
   TrendingUp,
   Utensils,
+  UserCircle,
   WalletCards,
 } from 'lucide-react';
 import {
@@ -97,6 +99,7 @@ type Budget = { category: string; monthlyLimitPaise: number };
 type SavingsGoal = { id: string; name: string; targetPaise: number; currentPaise: number; deadline: string; kind: string };
 type Account = { id: string; name: string; type: string; balancePaise: number };
 type FinanceData = { transactions: Transaction[]; budgets: Budget[]; goals: SavingsGoal[]; accounts: Account[] };
+type CurrentUser = { displayName: string; email: string };
 
 const categories = [
   'Food', 'Travel', 'College fees', 'Hostel', 'Technology', 'AI / ML Learning',
@@ -189,12 +192,19 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const loadData = useCallback(async () => {
     try {
-      const response = await fetch('/api/finance', { cache: 'no-store' });
-      if (!response.ok) throw new Error('The saved-data service is temporarily unavailable.');
-      setData((await response.json()) as FinanceData);
+      const [financeResponse, userResponse] = await Promise.all([
+        fetch('/api/finance', { cache: 'no-store' }),
+        fetch('/api/me', { cache: 'no-store' }),
+      ]);
+      if (!financeResponse.ok || !userResponse.ok) {
+        throw new Error('Your private workspace is temporarily unavailable.');
+      }
+      setData((await financeResponse.json()) as FinanceData);
+      setCurrentUser((await userResponse.json()) as CurrentUser);
       setError('');
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Unable to load saved data.');
@@ -304,7 +314,7 @@ export default function Home() {
       case 'reports':
         return <ReportsView transactions={data.transactions} totals={totals} />;
       case 'settings':
-        return <SettingsView data={data} onReset={() => postAction({ action: 'resetDemo' }, 'Demo transactions removed. Add your first real transaction whenever you’re ready.')} saving={saving} />;
+        return <SettingsView data={data} currentUser={currentUser} onReset={() => postAction({ action: 'resetDemo' }, 'Demo transactions removed. Add your first real transaction whenever you’re ready.')} saving={saving} />;
       default:
         return <Overview data={data} month={selectedMonth} transactions={monthTransactions} totals={totals} onNavigate={setActiveView} />;
     }
@@ -332,6 +342,20 @@ export default function Home() {
             Your safe pace is <strong className="text-white">{formatMoney(Math.max(0, totals.budget - totals.expenses) / 28)}</strong> per day this month.
           </p>
         </div>
+        {currentUser && (
+          <div className="mt-4 flex items-center gap-3 rounded-xl border border-white/10 px-3 py-2.5">
+            <div className="grid size-8 shrink-0 place-items-center rounded-full bg-[#f2b45d] text-xs font-bold text-[#173b34]">
+              {currentUser.displayName.slice(0, 1).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-white">{currentUser.displayName}</p>
+              <p className="truncate text-[10px] text-white/45">Private workspace</p>
+            </div>
+            <a href="/signout-with-chatgpt?return_to=%2F" target="_top" aria-label="Sign out" className="rounded-lg p-1.5 text-white/45 transition hover:bg-white/10 hover:text-white">
+              <LogOut className="size-4" />
+            </a>
+          </div>
+        )}
         <button type="button" onClick={() => setActiveView('settings')} className={`mt-4 flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${activeView === 'settings' ? 'bg-white text-[#153a33]' : 'text-white/55 hover:text-white'}`}><Settings className="size-4" /> Settings</button>
       </aside>
 
@@ -347,7 +371,7 @@ export default function Home() {
               <Input value={search} onChange={(event) => setSearch(event.target.value)} onFocus={() => setActiveView('transactions')} aria-label="Search transactions" placeholder="Search transactions…" className="h-10 border-[#d6e0dc] bg-white pl-9 shadow-sm" />
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
-              {loading ? <span className="hidden items-center gap-1.5 text-xs text-[#71807c] sm:flex"><Loader2 className="size-3.5 animate-spin" /> Syncing</span> : <span className="hidden rounded-full bg-[#fff0d9] px-3 py-1.5 text-xs font-semibold text-[#9a5f17] sm:inline-flex">Demo data</span>}
+              {loading ? <span className="hidden items-center gap-1.5 text-xs text-[#71807c] sm:flex"><Loader2 className="size-3.5 animate-spin" /> Syncing</span> : currentUser && <button type="button" onClick={() => setActiveView('settings')} className="hidden items-center gap-2 rounded-full border border-[#d6e0dc] bg-white py-1.5 pl-1.5 pr-3 text-xs font-semibold text-[#39574f] shadow-sm sm:flex"><span className="grid size-6 place-items-center rounded-full bg-[#173e36] text-[10px] text-white">{currentUser.displayName.slice(0, 1).toUpperCase()}</span>{currentUser.displayName}</button>}
               <Button variant="outline" size="icon-lg" aria-label="Notifications" className="hidden rounded-xl border-[#d6e0dc] bg-white sm:inline-flex"><Bell className="size-4" /></Button>
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger render={<Button className="h-10 rounded-xl bg-[#173e36] px-4 text-white hover:bg-[#235b50]" />}><Plus className="size-4" /><span className="hidden sm:inline">Add transaction</span><span className="sm:hidden">Add</span></DialogTrigger>
@@ -449,7 +473,7 @@ function Overview({ data, transactions, totals, month, onNavigate }: { data: Fin
           <div className="mt-5 grid gap-5 sm:grid-cols-2">{spending.slice(0, 6).map((item) => <BudgetMeter key={item.category} name={item.category} spent={item.spent} total={item.monthlyLimitPaise} />)}</div>
         </Panel>
         <Panel title="Emergency fund" subtitle="Your first line of financial safety" action={<PiggyBank className="size-5 text-[#198f7d]" />}>
-          {data.goals.filter((goal) => goal.id === 'emergency').map((goal) => {
+          {data.goals.filter((goal) => goal.kind === 'Safety').map((goal) => {
             const percent = Math.round((goal.currentPaise / goal.targetPaise) * 100);
             return <div key={goal.id} className="mt-6"><div className="flex items-end justify-between"><p className="text-3xl font-semibold tracking-tight">{formatMoney(goal.currentPaise)}</p><span className="text-sm font-semibold">{percent}%</span></div><Progress value={percent} className="mt-4"><ProgressTrack className="h-2"><ProgressIndicator className="bg-[#198f7d]" /></ProgressTrack></Progress><p className="mt-3 text-sm text-[#6d817b]">{formatMoney(goal.targetPaise - goal.currentPaise)} to reach your {formatMoney(goal.targetPaise)} target.</p><Button variant="outline" className="mt-5 w-full" onClick={() => onNavigate('goals')}>View savings goals</Button></div>;
           })}
@@ -543,9 +567,9 @@ function ReportsView({ transactions, totals }: { transactions: Transaction[]; to
   return <><div className="grid gap-4 sm:grid-cols-3"><MiniStat label="September surplus" value={formatMoney(totals.balance)} icon={TrendingUp} /><MiniStat label="Savings rate" value={`${totals.income ? Math.round((totals.savings / totals.income) * 100) : 0}%`} icon={PiggyBank} /><MiniStat label="Largest spend area" value={top?.[0] ?? 'None yet'} icon={BarChart3} /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]"><Panel title="Three-month direction" subtitle="Closing balance after spending and savings"><ChartContainer config={chartConfig} className="mt-5 h-[310px] w-full"><LineChart data={rows} margin={{ left: -15, right: 18 }}><CartesianGrid vertical={false} strokeDasharray="4 4" /><XAxis dataKey="month" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `₹${value / 1000}k`} /><ChartTooltip content={<ChartTooltipContent />} /><Line type="monotone" dataKey="balance" name="Balance" stroke="#173e36" strokeWidth={3} dot={{ fill: '#f19a4b', strokeWidth: 0, r: 5 }} /></LineChart></ChartContainer></Panel><Panel title="This month’s insight" subtitle="A practical read on your numbers"><div className="mt-5 space-y-4">{[{ icon: CircleCheck, title: 'Budget is healthy', copy: `You have used ${totals.budget ? Math.round((totals.expenses / totals.budget) * 100) : 0}% of planned spending.` }, { icon: PiggyBank, title: 'Savings habit started', copy: `${formatMoney(totals.savings)} is already separated from spending money.` }, { icon: CalendarClock, title: 'College payment ahead', copy: 'Begin funding October fees now to avoid a last-minute cash squeeze.' }].map((item) => <div key={item.title} className="flex gap-3 rounded-xl bg-[#f3f6f4] p-4"><item.icon className="mt-0.5 size-4 shrink-0 text-[#167463]" /><div><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-[#71807c]">{item.copy}</p></div></div>)}</div></Panel></div><Panel className="mt-5" title="Monthly close checklist" subtitle="Five minutes at month-end keeps every report trustworthy"><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{['Reconcile bank and UPI balances', 'Check refunds and shared expenses', 'Move savings before spending', 'Set next month’s category limits'].map((item, index) => <div key={item} className="flex gap-3 rounded-xl border border-[#e2e9e6] p-4"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e7f5ef] text-xs font-bold text-[#167463]">{index + 1}</span><p className="text-sm font-medium leading-5">{item}</p></div>)}</div></Panel></>;
 }
 
-function SettingsView({ data, onReset, saving }: { data: FinanceData; onReset: () => void; saving: boolean }) {
+function SettingsView({ data, currentUser, onReset, saving }: { data: FinanceData; currentUser: CurrentUser | null; onReset: () => void; saving: boolean }) {
   const demoCount = data.transactions.filter((item) => Boolean(item.isDemo)).length;
-  return <div className="grid gap-5 xl:grid-cols-[1fr_0.7fr]"><div className="space-y-5"><Panel title="Demo data" subtitle="Explore safely, then clear examples before real use"><div className="mt-5 flex flex-col gap-4 rounded-xl bg-[#fff3df] p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{demoCount} sample transactions are active</p><p className="mt-1 text-sm text-[#765c35]">Your own entries are never deleted by this action.</p></div><Button disabled={saving || demoCount === 0} variant="outline" onClick={onReset}>{saving ? <Loader2 className="animate-spin" /> : <Trash2 />}Remove demo data</Button></div></Panel><Panel title="Categories" subtitle="The shared category system used across budgets and reports"><div className="mt-5 flex flex-wrap gap-2">{categories.map((item) => <span key={item} className="rounded-full border border-[#dce5e1] bg-[#f7f9f8] px-3 py-1.5 text-sm text-[#536d66]">{item}</span>)}</div></Panel></div><div className="space-y-5"><Panel title="Data & privacy" subtitle="How your finance records are handled"><div className="mt-5 space-y-4">{[{ icon: ShieldCheck, title: 'Private workspace', copy: 'Your entries stay in this site’s protected database.' }, { icon: RefreshCw, title: 'Saved automatically', copy: 'New transactions and goal contributions persist across sessions.' }, { icon: Download, title: 'Portable records', copy: 'Export your transaction history to CSV at any time.' }].map((item) => <div key={item.title} className="flex gap-3"><div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#e7f5ef] text-[#167463]"><item.icon className="size-4" /></div><div><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-[#71807c]">{item.copy}</p></div></div>)}</div></Panel><Panel title="About" subtitle="Built from your college finance specification"><p className="mt-5 text-sm leading-6 text-[#61756f]">Campus Cash brings transactions, budgets, savings, fees, accounts, subscriptions, purchase planning, and monthly insights into one student-friendly workspace.</p></Panel></div></div>;
+  return <div className="grid gap-5 xl:grid-cols-[1fr_0.7fr]"><div className="space-y-5"><Panel title="Student account" subtitle="Your identity keeps this budget workspace separate"><div className="mt-5 flex items-center gap-4 rounded-xl border border-[#dce5e1] p-4"><div className="grid size-11 place-items-center rounded-full bg-[#173e36] text-white"><UserCircle className="size-5" /></div><div className="min-w-0 flex-1"><p className="truncate font-semibold">{currentUser?.displayName ?? 'Signed-in student'}</p><p className="truncate text-sm text-[#71807c]">{currentUser?.email}</p></div><a href="/signout-with-chatgpt?return_to=%2F" target="_top" className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#d6e0dc] px-3 text-sm font-medium hover:bg-[#f3f6f4]"><LogOut className="size-4" />Sign out</a></div></Panel><Panel title="Demo data" subtitle="Explore safely, then clear examples before real use"><div className="mt-5 flex flex-col gap-4 rounded-xl bg-[#fff3df] p-5 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{demoCount} sample transactions are active</p><p className="mt-1 text-sm text-[#765c35]">Only your demo entries are removed. Other students are never affected.</p></div><Button disabled={saving || demoCount === 0} variant="outline" onClick={onReset}>{saving ? <Loader2 className="animate-spin" /> : <Trash2 />}Remove demo data</Button></div></Panel><Panel title="Categories" subtitle="The shared category system used across budgets and reports"><div className="mt-5 flex flex-wrap gap-2">{categories.map((item) => <span key={item} className="rounded-full border border-[#dce5e1] bg-[#f7f9f8] px-3 py-1.5 text-sm text-[#536d66]">{item}</span>)}</div></Panel></div><div className="space-y-5"><Panel title="Data & privacy" subtitle="How every student’s records are protected"><div className="mt-5 space-y-4">{[{ icon: ShieldCheck, title: 'Isolated by account', copy: 'Every database read and write is tied to the signed-in student on the server.' }, { icon: RefreshCw, title: 'Saved automatically', copy: 'New transactions and goal contributions persist across sessions.' }, { icon: Download, title: 'Portable records', copy: 'Each student can export only their own transaction history.' }].map((item) => <div key={item.title} className="flex gap-3"><div className="grid size-9 shrink-0 place-items-center rounded-xl bg-[#e7f5ef] text-[#167463]"><item.icon className="size-4" /></div><div><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-[#71807c]">{item.copy}</p></div></div>)}</div></Panel><Panel title="About" subtitle="Built from your college finance specification"><p className="mt-5 text-sm leading-6 text-[#61756f]">Campus Cash brings transactions, budgets, savings, fees, accounts, subscriptions, purchase planning, and monthly insights into one private student workspace.</p></Panel></div></div>;
 }
 
 function MetricCard({ label, value, meta, icon: Icon, tone }: { label: string; value: string; meta: string; icon: typeof WalletCards; tone: string }) {
