@@ -6,36 +6,50 @@ import {
   ArrowUpRight,
   BarChart3,
   Bell,
+  Blocks,
   BookOpen,
+  BrainCircuit,
   Bus,
+  Calculator,
   CalendarClock,
+  Camera,
   ChevronRight,
   CircleCheck,
   CircleDollarSign,
+  CreditCard,
   Download,
+  Gift,
   Goal as GoalIcon,
   GraduationCap,
+  HandCoins,
   IndianRupee,
   Landmark,
   Laptop,
   LayoutDashboard,
   Loader2,
   LogOut,
+  MonitorSmartphone,
+  PackageSearch,
   PiggyBank,
+  PlugZap,
   Plus,
   ReceiptText,
   RefreshCw,
   Search,
   Settings,
   ShieldCheck,
+  Split,
   Sparkles,
   Target,
+  Train,
   Trash2,
   TrendingDown,
   TrendingUp,
+  Trophy,
   Utensils,
   UserCircle,
   WalletCards,
+  Zap,
 } from 'lucide-react';
 import {
   Bar,
@@ -78,7 +92,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-type View = 'overview' | 'transactions' | 'budgets' | 'goals' | 'accounts' | 'college' | 'reports' | 'settings';
+type View = 'overview' | 'transactions' | 'budgets' | 'toolkit' | 'goals' | 'accounts' | 'college' | 'reports' | 'settings';
 type TransactionType = 'income' | 'expense' | 'savings';
 
 type Transaction = {
@@ -110,6 +124,7 @@ const navItems: { key: View; label: string; icon: typeof LayoutDashboard }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
   { key: 'transactions', label: 'Transactions', icon: ReceiptText },
   { key: 'budgets', label: 'Budgets', icon: BarChart3 },
+  { key: 'toolkit', label: 'Money toolkit', icon: Blocks },
   { key: 'goals', label: 'Savings goals', icon: GoalIcon },
   { key: 'accounts', label: 'Accounts', icon: WalletCards },
   { key: 'college', label: 'College costs', icon: BookOpen },
@@ -120,6 +135,7 @@ const viewTitles: Record<View, { eyebrow: string; title: string; subtitle: strin
   overview: { eyebrow: 'Wednesday, 2 September', title: 'Your money, at a glance.', subtitle: 'You’re on track this month. Keep the good streak going.' },
   transactions: { eyebrow: 'Money log', title: 'Every rupee, accounted for.', subtitle: 'Search, filter, add, or remove income and expenses.' },
   budgets: { eyebrow: 'Monthly plan', title: 'Spend with a clear limit.', subtitle: 'Compare each category’s plan with what you have actually spent.' },
+  toolkit: { eyebrow: '20 student money tools', title: 'Your complete money toolkit.', subtitle: 'Plan, predict, split, save, and explore — from one private student workspace.' },
   goals: { eyebrow: 'Save with purpose', title: 'Small deposits. Big progress.', subtitle: 'Build your safety net and fund the things that move you forward.' },
   accounts: { eyebrow: 'Balance check', title: 'All your money in one view.', subtitle: 'Track bank, UPI, cash, and savings balances together.' },
   college: { eyebrow: 'Academic money plan', title: 'College costs, without surprises.', subtitle: 'Prepare for fees, hostel, learning, subscriptions, and purchases.' },
@@ -305,6 +321,8 @@ export default function Home() {
         return <TransactionsView transactions={data.transactions} month={selectedMonth} search={search} setSearch={setSearch} typeFilter={typeFilter} setTypeFilter={setTypeFilter} onDelete={deleteTransaction} />;
       case 'budgets':
         return <BudgetsView budgets={data.budgets} transactions={monthTransactions} onSave={(category, monthlyLimit) => postAction({ action: 'budget', category, monthlyLimit }, 'Monthly budget updated.')} saving={saving} />;
+      case 'toolkit':
+        return <ToolkitView data={data} transactions={monthTransactions} totals={totals} onNavigate={setActiveView} />;
       case 'goals':
         return <GoalsView goals={data.goals} onContribute={(goalId, amount) => postAction({ action: 'goalContribution', goalId, amount }, 'Contribution added to your goal.')} saving={saving} />;
       case 'accounts':
@@ -565,6 +583,105 @@ function ReportsView({ transactions, totals }: { transactions: Transaction[]; to
   const topCategory = transactions.filter((item) => item.type === 'expense' && item.occurredOn.startsWith('2026-09')).reduce<Record<string, number>>((map, item) => ({ ...map, [item.category]: (map[item.category] ?? 0) + item.amountPaise }), {});
   const top = Object.entries(topCategory).sort((a, b) => b[1] - a[1])[0];
   return <><div className="grid gap-4 sm:grid-cols-3"><MiniStat label="September surplus" value={formatMoney(totals.balance)} icon={TrendingUp} /><MiniStat label="Savings rate" value={`${totals.income ? Math.round((totals.savings / totals.income) * 100) : 0}%`} icon={PiggyBank} /><MiniStat label="Largest spend area" value={top?.[0] ?? 'None yet'} icon={BarChart3} /></div><div className="mt-5 grid gap-5 xl:grid-cols-[1.35fr_0.65fr]"><Panel title="Three-month direction" subtitle="Closing balance after spending and savings"><ChartContainer config={chartConfig} className="mt-5 h-[310px] w-full"><LineChart data={rows} margin={{ left: -15, right: 18 }}><CartesianGrid vertical={false} strokeDasharray="4 4" /><XAxis dataKey="month" axisLine={false} tickLine={false} /><YAxis axisLine={false} tickLine={false} tickFormatter={(value) => `₹${value / 1000}k`} /><ChartTooltip content={<ChartTooltipContent />} /><Line type="monotone" dataKey="balance" name="Balance" stroke="#173e36" strokeWidth={3} dot={{ fill: '#f19a4b', strokeWidth: 0, r: 5 }} /></LineChart></ChartContainer></Panel><Panel title="This month’s insight" subtitle="A practical read on your numbers"><div className="mt-5 space-y-4">{[{ icon: CircleCheck, title: 'Budget is healthy', copy: `You have used ${totals.budget ? Math.round((totals.expenses / totals.budget) * 100) : 0}% of planned spending.` }, { icon: PiggyBank, title: 'Savings habit started', copy: `${formatMoney(totals.savings)} is already separated from spending money.` }, { icon: CalendarClock, title: 'College payment ahead', copy: 'Begin funding October fees now to avoid a last-minute cash squeeze.' }].map((item) => <div key={item.title} className="flex gap-3 rounded-xl bg-[#f3f6f4] p-4"><item.icon className="mt-0.5 size-4 shrink-0 text-[#167463]" /><div><p className="text-sm font-semibold">{item.title}</p><p className="mt-1 text-xs leading-5 text-[#71807c]">{item.copy}</p></div></div>)}</div></Panel></div><Panel className="mt-5" title="Monthly close checklist" subtitle="Five minutes at month-end keeps every report trustworthy"><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{['Reconcile bank and UPI balances', 'Check refunds and shared expenses', 'Move savings before spending', 'Set next month’s category limits'].map((item, index) => <div key={item} className="flex gap-3 rounded-xl border border-[#e2e9e6] p-4"><span className="grid size-7 shrink-0 place-items-center rounded-full bg-[#e7f5ef] text-xs font-bold text-[#167463]">{index + 1}</span><p className="text-sm font-medium leading-5">{item}</p></div>)}</div></Panel></>;
+}
+
+type ToolkitTotals = { income: number; expenses: number; savings: number; budget: number; balance: number };
+
+function ToolkitView({ data, transactions, totals, onNavigate }: { data: FinanceData; transactions: Transaction[]; totals: ToolkitTotals; onNavigate: (view: View) => void }) {
+  const [assistantPrompt, setAssistantPrompt] = useState('pace');
+  const [splitTotal, setSplitTotal] = useState(1200);
+  const [splitPeople, setSplitPeople] = useState(4);
+  const [monthlyRides, setMonthlyRides] = useState(40);
+  const [rideCost, setRideCost] = useState(35);
+  const [passCost, setPassCost] = useState(1100);
+  const [foreignAmount, setForeignAmount] = useState(20);
+  const [inrPerUnit, setInrPerUnit] = useState(83.5);
+  const [loanPrincipal, setLoanPrincipal] = useState(250000);
+  const [loanRate, setLoanRate] = useState(9.5);
+  const [loanMonths, setLoanMonths] = useState(36);
+  const [receiptName, setReceiptName] = useState('');
+
+  const expenseRows = transactions.filter((item) => item.type === 'expense');
+  const latestDay = Math.max(1, ...transactions.map((item) => Number(item.occurredOn.slice(-2)) || 1));
+  const dailyPace = toRupees(totals.expenses) / latestDay;
+  const runwayDays = dailyPace > 0 ? Math.max(0, Math.floor(toRupees(totals.balance) / dailyPace)) : null;
+  const runwayDate = runwayDays === null ? null : new Date(2026, 8, latestDay + runwayDays);
+  const roundUps = expenseRows.reduce((sum, item) => {
+    const rupees = toRupees(item.amountPaise);
+    return sum + ((10 - (rupees % 10)) % 10);
+  }, 0);
+  const unallocated = toRupees(totals.income - totals.budget - totals.savings);
+  const activeSavingsMonths = new Set(data.transactions.filter((item) => item.type === 'savings').map((item) => item.occurredOn.slice(0, 7))).size;
+  const subscriptionRows = transactions.filter((item) => item.type === 'expense' && item.category === 'Subscriptions');
+  const subscriptionTotal = subscriptionRows.reduce((sum, item) => sum + item.amountPaise, 0);
+  const projectRows = transactions.filter((item) => item.type === 'expense' && ['AI / ML Learning', 'Technology'].includes(item.category));
+  const projectSpent = projectRows.reduce((sum, item) => sum + item.amountPaise, 0);
+  const categoryTotals = expenseRows.reduce<Record<string, number>>((map, item) => ({ ...map, [item.category]: (map[item.category] ?? 0) + item.amountPaise }), {});
+  const highestCategory = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1])[0];
+  const assistantAnswer = assistantPrompt === 'pace'
+    ? `At your current pace of ${currency.format(dailyPace)} per day, ${runwayDate ? `your available balance lasts to about ${runwayDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : 'there is not enough spending history to forecast yet'}.`
+    : assistantPrompt === 'category'
+      ? highestCategory ? `${highestCategory[0]} is your largest category this month at ${formatMoney(highestCategory[1])}.` : 'Add an expense and I will identify your largest category.'
+      : `You have saved ${formatMoney(totals.savings)}, or ${totals.income ? Math.round((totals.savings / totals.income) * 100) : 0}% of this month’s income.`;
+  const monthlyTransit = monthlyRides * rideCost;
+  const monthlyLoanRate = loanRate / 1200;
+  const emi = monthlyLoanRate > 0
+    ? loanPrincipal * monthlyLoanRate * Math.pow(1 + monthlyLoanRate, loanMonths) / (Math.pow(1 + monthlyLoanRate, loanMonths) - 1)
+    : loanPrincipal / Math.max(1, loanMonths);
+  const monthlyBudgetLeft = Math.max(0, totals.budget - totals.expenses);
+
+  const go = (view: View) => onNavigate(view);
+  return (
+    <div className="space-y-8">
+      <div className="rounded-3xl bg-[#173e36] p-6 text-white sm:p-8">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div><span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-[#f7ca84]">20 tools • one private workspace</span><h2 className="mt-4 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">Built for college life, from canteen splits to education loans.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Your planning tools work now. Features involving banks, investments, OCR, live discounts, or credit bureaus are marked clearly until a verified provider is connected.</p></div>
+          <div className="grid min-w-64 grid-cols-2 gap-3"><div className="rounded-2xl bg-white/8 p-4"><p className="text-xs text-white/55">Safe to spend</p><p className="mt-1 text-xl font-semibold">{formatMoney(monthlyBudgetLeft)}</p></div><div className="rounded-2xl bg-white/8 p-4"><p className="text-xs text-white/55">Savings streak</p><p className="mt-1 text-xl font-semibold">{activeSavingsMonths} months</p></div></div>
+        </div>
+      </div>
+
+      <ToolkitSection title="Automate & predict" subtitle="Understand what is happening and what may happen next.">
+        <FeatureCard number={1} title="Automated Bank Sync" description="Connect accounts to fetch and categorize transactions." icon={PlugZap} status="Provider required" tone="planned"><p className="text-xs leading-5 text-[#71807c]">Your manual accounts stay available. A consent-based bank data provider must be configured before live syncing can be enabled.</p><Button disabled variant="outline" className="mt-4 w-full">Connect a bank</Button></FeatureCard>
+        <FeatureCard number={2} title="AI Receipt Scanner" description="Prepare a bill photo for secure OCR extraction." icon={Camera} status="Integration ready" tone="planned"><label className="mt-1 block cursor-pointer rounded-xl border border-dashed border-[#bdcdc7] bg-[#f8faf9] p-4 text-center text-sm font-medium"><Camera className="mx-auto mb-2 size-5 text-[#167463]" />{receiptName || 'Choose receipt photo'}<input className="sr-only" type="file" accept="image/*" onChange={(event) => setReceiptName(event.target.files?.[0]?.name ?? '')} /></label>{receiptName && <p className="mt-2 text-xs text-[#71807c]">Selected securely. OCR provider connection is still required before extraction.</p>}</FeatureCard>
+        <FeatureCard number={3} title="Local AI Assistant" description="Ask private questions about your spending." icon={BrainCircuit} status="Works locally" tone="live"><NativeSelect value={assistantPrompt} onChange={(event) => setAssistantPrompt(event.target.value)} className="w-full"><NativeSelectOption value="pace">How long will my balance last?</NativeSelectOption><NativeSelectOption value="category">Where am I spending most?</NativeSelectOption><NativeSelectOption value="saving">How is my savings habit?</NativeSelectOption></NativeSelect><div className="mt-3 rounded-xl bg-[#eaf5f1] p-3 text-sm leading-5 text-[#365d54]">{assistantAnswer}</div><p className="mt-2 text-[11px] text-[#71807c]">Rule-based analysis runs in this browser; no external AI receives your data.</p></FeatureCard>
+        <FeatureCard number={4} title="Predictive Alerts" description="Forecast when this month’s balance may run out." icon={Zap} status="Live forecast" tone="live"><p className="text-3xl font-semibold tracking-tight">{runwayDate ? runwayDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Learning'}</p><p className="mt-2 text-xs leading-5 text-[#71807c]">Based on {currency.format(dailyPace)} average daily spending through day {latestDay}. Forecasts are estimates, not guarantees.</p></FeatureCard>
+        <FeatureCard number={5} title="Subscription Manager" description="Spot recurring digital costs before renewal." icon={RefreshCw} status="Transaction scan" tone="live"><p className="text-2xl font-semibold">{formatMoney(subscriptionTotal)}<span className="text-sm font-normal text-[#71807c]"> this month</span></p><p className="mt-2 text-xs leading-5 text-[#71807c]">{subscriptionRows.length ? `${subscriptionRows.length} subscription transaction${subscriptionRows.length === 1 ? '' : 's'} detected.` : 'No subscription expenses logged this month. Categorize one as Subscriptions to track it here.'}</p></FeatureCard>
+      </ToolkitSection>
+
+      <ToolkitSection title="Budget, save & share" subtitle="Give every rupee a purpose, with tools for real student routines.">
+        <FeatureCard number={6} title="Wishlist Savings" description="Create micro-goals for planned purchases." icon={Gift} status="Available" tone="live"><p className="text-sm font-semibold">{data.goals.length} active goal{data.goals.length === 1 ? '' : 's'}</p><p className="mt-1 text-xs text-[#71807c]">{formatMoney(data.goals.reduce((sum, goal) => sum + goal.currentPaise, 0))} saved toward them.</p><Button variant="outline" className="mt-4 w-full" onClick={() => go('goals')}>Open savings goals</Button></FeatureCard>
+        <FeatureCard number={7} title="Micro-Investing" description="Simulate investing transaction round-ups." icon={TrendingUp} status="Simulation" tone="planned"><p className="text-2xl font-semibold">{currency.format(roundUps)}</p><p className="mt-2 text-xs leading-5 text-[#71807c]">Potential round-ups to the next ₹10 from this month’s expenses. Simulation only — no money is moved or invested.</p></FeatureCard>
+        <FeatureCard number={8} title="Envelope Budgeting" description="Enforce category limits with digital envelopes." icon={PackageSearch} status="Available" tone="live"><p className="text-sm font-semibold">{data.budgets.length} envelopes</p><p className="mt-1 text-xs text-[#71807c]">{formatMoney(monthlyBudgetLeft)} remains across your monthly plan.</p><Button variant="outline" className="mt-4 w-full" onClick={() => go('budgets')}>Manage envelopes</Button></FeatureCard>
+        <FeatureCard number={9} title="Zero-Based Budgeting" description="Assign every rupee until unallocated money reaches zero." icon={CircleDollarSign} status={Math.abs(unallocated) < 1 ? 'Balanced' : 'Needs assignment'} tone={Math.abs(unallocated) < 1 ? 'live' : 'attention'}><p className={`text-2xl font-semibold ${unallocated < 0 ? 'text-[#b85f4e]' : ''}`}>{currency.format(unallocated)}</p><p className="mt-2 text-xs leading-5 text-[#71807c]">Income minus budget envelopes and planned savings. {unallocated > 0 ? 'Assign this amount to a category or goal.' : unallocated < 0 ? 'Your plan assigns more than this month’s income.' : 'Every rupee has a job.'}</p></FeatureCard>
+        <FeatureCard number={10} title="Roommate Splitter" description="Divide rent, canteen, or grocery costs." icon={Split} status="Calculator" tone="live"><div className="grid grid-cols-2 gap-2"><label className="text-xs text-[#71807c]">Bill amount<Input type="number" min="0" value={splitTotal} onChange={(event) => setSplitTotal(Number(event.target.value))} className="mt-1 h-9" /></label><label className="text-xs text-[#71807c]">People<Input type="number" min="1" value={splitPeople} onChange={(event) => setSplitPeople(Math.max(1, Number(event.target.value)))} className="mt-1 h-9" /></label></div><p className="mt-3 text-sm">Each person pays <strong>{currency.format(splitTotal / Math.max(1, splitPeople))}</strong></p></FeatureCard>
+      </ToolkitSection>
+
+      <ToolkitSection title="Campus life" subtitle="Stay ahead of travel, deals, fees, projects, and family reporting.">
+        <FeatureCard number={11} title="Transit Tracker" description="Compare per-ride travel with a campus pass." icon={Train} status="Calculator" tone="live"><div className="grid grid-cols-3 gap-2"><label className="text-[11px] text-[#71807c]">Rides<Input type="number" min="0" value={monthlyRides} onChange={(event) => setMonthlyRides(Number(event.target.value))} className="mt-1 h-9 px-2" /></label><label className="text-[11px] text-[#71807c]">₹ / ride<Input type="number" min="0" value={rideCost} onChange={(event) => setRideCost(Number(event.target.value))} className="mt-1 h-9 px-2" /></label><label className="text-[11px] text-[#71807c]">Pass ₹<Input type="number" min="0" value={passCost} onChange={(event) => setPassCost(Number(event.target.value))} className="mt-1 h-9 px-2" /></label></div><p className="mt-3 text-xs leading-5">{passCost < monthlyTransit ? `The pass saves about ${currency.format(monthlyTransit - passCost)} per month.` : `Pay-per-ride saves about ${currency.format(passCost - monthlyTransit)} per month.`}</p></FeatureCard>
+        <FeatureCard number={12} title="Student Discounts" description="Keep a watchlist for verified student deals." icon={Gift} status="Feed required" tone="planned"><div className="flex flex-wrap gap-2">{['Technology', 'Software', 'Apparel'].map((item) => <span key={item} className="rounded-full bg-[#f3f6f4] px-2.5 py-1 text-xs text-[#536d66]">{item}</span>)}</div><p className="mt-3 text-xs leading-5 text-[#71807c]">A verified, current offers feed must be connected before deal alerts can be shown.</p></FeatureCard>
+        <FeatureCard number={13} title="College Fee Planner" description="Track tuition, hostel, and exam dues by semester." icon={GraduationCap} status="Available" tone="live"><p className="text-sm font-semibold">Next major due: 10 Oct</p><p className="mt-1 text-xs text-[#71807c]">Tuition, forms, hostel renewal, and scholarships are organized together.</p><Button variant="outline" className="mt-4 w-full" onClick={() => go('college')}>Open fee planner</Button></FeatureCard>
+        <FeatureCard number={14} title="Project Ledger" description="Isolate equipment, learning, and project costs." icon={BookOpen} status="Auto grouped" tone="live"><p className="text-2xl font-semibold">{formatMoney(projectSpent)}</p><p className="mt-2 text-xs leading-5 text-[#71807c]">Grouped from Technology and AI / ML Learning transactions this month.</p></FeatureCard>
+        <FeatureCard number={15} title="Downloadable Reports" description="Share a clean allowance summary with family." icon={Download} status="Print / PDF" tone="live"><p className="text-xs leading-5 text-[#71807c]">Open your report, then use the browser’s Print dialog and choose “Save as PDF”.</p><Button variant="outline" className="mt-4 w-full" onClick={() => go('reports')}><Download />Open report</Button></FeatureCard>
+      </ToolkitSection>
+
+      <ToolkitSection title="Grow & monitor" subtitle="Build habits, handle global costs, and model long-term debt.">
+        <FeatureCard number={16} title="Cash Flow Widget" description="A compact, glanceable spending snapshot." icon={MonitorSmartphone} status="Widget preview" tone="live"><div className="rounded-2xl bg-[#173e36] p-4 text-white"><p className="text-[11px] text-white/55">Campus Cash • this month</p><div className="mt-2 flex items-end justify-between"><p className="text-xl font-semibold">{formatMoney(totals.balance)}</p><span className="text-xs text-[#f7ca84]">{currency.format(dailyPace)}/day</span></div></div><p className="mt-2 text-[11px] text-[#71807c]">Use your browser’s “Add to Home Screen” for quick access.</p></FeatureCard>
+        <FeatureCard number={17} title="Gamified Streaks" description="Earn progress for consistent saving." icon={Trophy} status={`${activeSavingsMonths}-month streak`} tone="live"><div className="flex gap-2">{[1, 2, 3, 4, 5].map((step) => <span key={step} className={`grid size-9 place-items-center rounded-full text-xs font-bold ${step <= activeSavingsMonths ? 'bg-[#f7c97f] text-[#60400f]' : 'bg-[#eef2f0] text-[#9aa8a3]'}`}>{step}</span>)}</div><p className="mt-3 text-xs text-[#71807c]">Log savings in another month to extend your streak.</p></FeatureCard>
+        <FeatureCard number={18} title="Credit Score Monitor" description="Connect regulated access to credit health." icon={CreditCard} status="Bureau required" tone="planned"><p className="text-xs leading-5 text-[#71807c]">No score is estimated or fabricated. A licensed credit-bureau partner and explicit student consent are required.</p><Button disabled variant="outline" className="mt-4 w-full">Connect credit profile</Button></FeatureCard>
+        <FeatureCard number={19} title="Multi-Currency Support" description="Convert global software and study costs." icon={IndianRupee} status="Manual rate" tone="live"><div className="grid grid-cols-2 gap-2"><label className="text-xs text-[#71807c]">Foreign amount<Input type="number" min="0" step="0.01" value={foreignAmount} onChange={(event) => setForeignAmount(Number(event.target.value))} className="mt-1 h-9" /></label><label className="text-xs text-[#71807c]">₹ per unit<Input type="number" min="0" step="0.01" value={inrPerUnit} onChange={(event) => setInrPerUnit(Number(event.target.value))} className="mt-1 h-9" /></label></div><p className="mt-3 text-sm">Estimated cost: <strong>{currency.format(foreignAmount * inrPerUnit)}</strong></p><p className="mt-1 text-[11px] text-[#71807c]">Enter the rate shown by your bank or card; this is not a live FX quote.</p></FeatureCard>
+        <FeatureCard number={20} title="Loan Payoff Calculator" description="Model an education-loan repayment timeline." icon={Calculator} status="Calculator" tone="live"><div className="grid grid-cols-3 gap-2"><label className="text-[11px] text-[#71807c]">Loan ₹<Input type="number" min="0" value={loanPrincipal} onChange={(event) => setLoanPrincipal(Number(event.target.value))} className="mt-1 h-9 px-2" /></label><label className="text-[11px] text-[#71807c]">Rate %<Input type="number" min="0" step="0.1" value={loanRate} onChange={(event) => setLoanRate(Number(event.target.value))} className="mt-1 h-9 px-2" /></label><label className="text-[11px] text-[#71807c]">Months<Input type="number" min="1" value={loanMonths} onChange={(event) => setLoanMonths(Math.max(1, Number(event.target.value)))} className="mt-1 h-9 px-2" /></label></div><p className="mt-3 text-sm">Estimated EMI: <strong>{currency.format(emi)}</strong></p><p className="mt-1 text-[11px] text-[#71807c]">Total repayment: {currency.format(emi * loanMonths)}. Estimates exclude fees and rate changes.</p></FeatureCard>
+      </ToolkitSection>
+    </div>
+  );
+}
+
+function ToolkitSection({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
+  return <section><div className="mb-4"><h2 className="text-xl font-semibold tracking-tight">{title}</h2><p className="mt-1 text-sm text-[#71807c]">{subtitle}</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">{children}</div></section>;
+}
+
+function FeatureCard({ number, title, description, icon: Icon, status, tone, children }: { number: number; title: string; description: string; icon: typeof WalletCards; status: string; tone: 'live' | 'planned' | 'attention'; children: React.ReactNode }) {
+  const statusTone = tone === 'live' ? 'bg-[#e7f5ef] text-[#167463]' : tone === 'attention' ? 'bg-[#fff0d9] text-[#9a5f17]' : 'bg-[#eef0f6] text-[#646b86]';
+  return <article className="flex min-h-[275px] flex-col rounded-2xl border border-[#dce5e1] bg-white p-5 shadow-[0_10px_30px_rgba(24,62,54,0.04)]"><div className="flex items-start justify-between gap-3"><div className="grid size-10 place-items-center rounded-xl bg-[#f3f6f4] text-[#173e36]"><Icon className="size-5" /></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${statusTone}`}>{status}</span></div><p className="mt-4 text-[11px] font-bold tracking-[0.14em] text-[#91a09b]">TOOL {String(number).padStart(2, '0')}</p><h3 className="mt-1 font-semibold">{title}</h3><p className="mt-1 min-h-10 text-xs leading-5 text-[#71807c]">{description}</p><div className="mt-4 flex-1">{children}</div></article>;
 }
 
 function SettingsView({ data, currentUser, onReset, saving }: { data: FinanceData; currentUser: CurrentUser | null; onReset: () => void; saving: boolean }) {
