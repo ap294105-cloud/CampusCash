@@ -401,7 +401,7 @@ export default function Home() {
     : viewTitles[activeView];
 
   return (
-    <main className="min-h-screen bg-[#f2f5f3] pb-20 text-[#142925] lg:pb-0">
+    <main suppressHydrationWarning className="min-h-screen bg-[#f2f5f3] pb-20 text-[#142925] lg:pb-0">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-[#28473f] bg-[#102e29] px-5 py-6 text-white lg:flex lg:flex-col">
         <button type="button" onClick={() => setActiveView('overview')} className="flex items-center gap-3 px-2 text-left">
           <div className="grid size-10 place-items-center rounded-2xl bg-[#f2b45d] text-[#173b34]"><CircleDollarSign className="size-5" /></div>
