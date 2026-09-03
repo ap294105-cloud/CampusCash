@@ -163,6 +163,9 @@ async function ensureStudentWorkspace(user: ChatGPTUser) {
     ]);
     await db.prepare('PRAGMA optimize').run();
   }
+
+  // Keep the production workspace free of sample transactions. Real rows are never marked is_demo.
+  await db.prepare('DELETE FROM student_transactions WHERE user_id = ? AND is_demo = 1').bind(user.userId).run();
 }
 
 function normalizeRows(rows: D1Row[]) {

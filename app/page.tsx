@@ -202,8 +202,16 @@ const chartConfig = {
   savings: { label: 'Savings', color: '#5d67b2' },
 } satisfies ChartConfig;
 
+const emptyFinanceData: FinanceData = {
+  transactions: [],
+  budgets: [],
+  goals: [],
+  accounts: [],
+  feeSettings: fallbackData.feeSettings,
+};
+
 export default function Home() {
-  const [data, setData] = useState<FinanceData>(fallbackData);
+  const [data, setData] = useState<FinanceData>(emptyFinanceData);
   const [activeView, setActiveView] = useState<View>('overview');
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
   const [search, setSearch] = useState('');
@@ -530,6 +538,7 @@ function Overview({ data, transactions, totals, month, onNavigate }: { data: Fin
 
   return (
     <>
+      {!data.transactions.length && <div className="mb-5 rounded-2xl border border-[#d7e8e1] bg-[#eff8f4] p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-[#173e36]">Your workspace is ready for real data.</p><p className="mt-1 text-sm leading-5 text-[#61756f]">No sample transactions are shown. Add your first allowance, expense, or savings transfer to activate personalized insights.</p></div><Button className="bg-[#173e36]" onClick={() => onNavigate('transactions')}><Plus />Add first transaction</Button></div></div>}
       <section className="overflow-hidden rounded-3xl bg-[#173e36] p-6 text-white shadow-[0_18px_50px_rgba(24,62,54,0.16)] sm:p-8">
         <div className="grid gap-7 xl:grid-cols-[1.25fr_0.75fr] xl:items-end">
           <div><p className="text-sm font-medium text-[#f7ca84]">{monthLabel(month)} money plan</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">You have {formatMoney(Math.max(0, totals.balance))} to direct with intention.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Your next best move: keep daily spending near {currency.format(safeDailySpend)}, then separate savings before the month gets busy.</p><div className="mt-5 flex flex-wrap gap-3"><Button className="bg-[#f5c77c] text-[#173e36] hover:bg-[#ffd99c]" onClick={() => onNavigate('transactions')}><Plus />Log a transaction</Button><Button variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={() => onNavigate('budgets')}>Review budgets <ChevronRight /></Button></div></div>
