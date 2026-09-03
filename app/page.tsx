@@ -246,7 +246,10 @@ export default function Home() {
     [data.transactions, selectedMonth],
   );
 
-  const availableMonths = useMemo(() => [...new Set([currentMonth, ...data.transactions.map((item) => item.occurredOn.slice(0, 7))])].sort().reverse(), [data.transactions]);
+  const availableMonths = useMemo(() => {
+    const years = new Set([currentMonth.slice(0, 4), ...data.transactions.map((item) => item.occurredOn.slice(0, 4))]);
+    return [...years].sort().reverse().flatMap((year) => Array.from({ length: 12 }, (_, index) => `${year}-${String(12 - index).padStart(2, '0')}`));
+  }, [data.transactions]);
 
   const totals = useMemo(() => {
     const sum = (type: TransactionType) => monthTransactions.filter((item) => item.type === type).reduce((total, item) => total + item.amountPaise, 0);
