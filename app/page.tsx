@@ -75,6 +75,7 @@ import {
 } from '@/components/ui/chart';
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -450,7 +451,7 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2 sm:gap-3">
               {loading ? <span className="hidden items-center gap-1.5 text-xs text-[#71807c] sm:flex"><Loader2 className="size-3.5 animate-spin" /> Syncing</span> : currentUser && <button type="button" onClick={() => setActiveView('settings')} className="hidden items-center gap-2 rounded-full border border-[#d6e0dc] bg-white py-1.5 pl-1.5 pr-3 text-xs font-semibold text-[#39574f] shadow-sm sm:flex"><span className="grid size-6 place-items-center rounded-full bg-[#173e36] text-[10px] text-white">{currentUser.displayName.slice(0, 1).toUpperCase()}</span>{currentUser.displayName}</button>}
-              <Button variant="outline" size="icon-lg" aria-label="Notifications" className="hidden rounded-xl border-[#d6e0dc] bg-white sm:inline-flex"><Bell className="size-4" /></Button>
+              <Button variant="outline" size="icon-lg" aria-label="Notifications" onClick={() => setError('Notifications will appear here when a budget, bill, or renewal needs your attention.')} className="hidden rounded-xl border-[#d6e0dc] bg-white sm:inline-flex"><Bell className="size-4" /></Button>
               <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
                 <DialogTrigger render={<Button className="h-10 rounded-xl bg-[#173e36] px-4 text-white hover:bg-[#235b50]" />}><Plus className="size-4" /><span className="hidden sm:inline">Add transaction</span><span className="sm:hidden">Add</span></DialogTrigger>
                 <TransactionDialog onSubmit={submitTransaction} saving={saving} />
