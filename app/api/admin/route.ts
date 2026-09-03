@@ -9,6 +9,12 @@ export async function GET(request: Request) {
   const db = env.DB;
   await db.prepare(`CREATE TABLE IF NOT EXISTS audit_logs (id TEXT PRIMARY KEY, actor_email TEXT NOT NULL, action TEXT NOT NULL, target TEXT NOT NULL, created_at TEXT NOT NULL)`).run();
   await db.prepare('INSERT INTO audit_logs (id, actor_email, action, target, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), user.email, 'admin_view', 'admin_dashboard', new Date().toISOString()).run();
+  if (url.searchParams.get('format') === 'audit_csv') {
+    const auditExport = await db.prepare('SELECT id, actor_email, action, target, created_at FROM audit_logs ORDER BY created_at DESC').all();
+    const csvCell = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const csv = ['id,actor_email,action,target,created_at', ...(auditExport.results ?? []).map((row: any) => [row.id, row.actor_email, row.action, row.target, row.created_at].map(csvCell).join(','))].join('\n');
+    return new Response(csv, { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="campus-cash-audit-log.csv"' } });
+  }
   const [students, transactions, audit] = await Promise.all([
     db.prepare('SELECT user_id, email, display_name, created_at, updated_at FROM student_profiles ORDER BY updated_at DESC').all(),
     db.prepare('SELECT COUNT(*) AS count FROM student_transactions').first<{ count: number }>(),
