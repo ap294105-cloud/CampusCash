@@ -256,7 +256,11 @@ export default function Home() {
   );
 
   const availableMonths = useMemo(() => {
-    const years = new Set([currentMonth.slice(0, 4), ...data.transactions.map((item) => item.occurredOn.slice(0, 4))]);
+    const liveYear = Number(currentMonth.slice(0, 4));
+    const years = new Set([
+      ...Array.from({ length: 5 }, (_, index) => String(liveYear - 2 + index)),
+      ...data.transactions.map((item) => item.occurredOn.slice(0, 4)),
+    ]);
     return [...years].sort().reverse().flatMap((year) => Array.from({ length: 12 }, (_, index) => `${year}-${String(12 - index).padStart(2, '0')}`));
   }, [data.transactions]);
 
