@@ -296,6 +296,29 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, id });
     }
 
+    if (action === 'bulkTransactions') {
+      const rows = Array.isArray(body.rows) ? body.rows : [];
+      if (rows.length > 500) return Response.json({ error: 'Please import 500 rows or fewer at a time.' }, { status: 400 });
+      const existing = await db.prepare('SELECT description, amount_paise, occurred_on FROM student_transactions WHERE user_id = ?').bind(user.userId).all<{ description: string; amount_paise: number; occurred_on: string }>();
+      const known = new Set(existing.results.map((row) => `${row.description}|${row.amount_paise}|${row.occurred_on}`));
+      const statements = rows.flatMap((row) => {
+        const item = row as Record<string, unknown>;
+        const description = String(item.description ?? '').trim();
+        const amount = Number(item.amount);
+        const occurredOn = String(item.occurredOn ?? '').trim();
+        const type = String(item.type ?? 'expense');
+        const category = String(item.category ?? 'Personal').trim() || 'Personal';
+        if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(occurredOn) || !['income', 'expense', 'savings'].includes(type)) return [];
+        const amountPaise = Math.round(amount * 100);
+        const key = `${description}|${amountPaise}|${occurredOn}`;
+        if (known.has(key)) return [];
+        known.add(key);
+        return [db.prepare(`INSERT INTO student_transactions (id, user_id, description, amount_paise, type, category, occurred_on, account, payment_method, note, is_demo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`).bind(crypto.randomUUID(), user.userId, description, amountPaise, type, category, occurredOn, String(item.account ?? 'Bank account'), String(item.paymentMethod ?? 'Bank transfer'), 'Imported from CSV', new Date().toISOString())];
+      });
+      if (statements.length) await db.batch(statements);
+      return Response.json({ ok: true, imported: statements.length, skipped: rows.length - statements.length });
+    }
+
     if (action === 'budget') {
       const category = String(body.category ?? '').trim();
       const monthlyLimit = Number(body.monthlyLimit);

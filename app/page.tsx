@@ -47,6 +47,7 @@ import {
   TrendingUp,
   Trophy,
   Utensils,
+  Upload,
   UserCircle,
   WalletCards,
   Zap,
@@ -366,7 +367,7 @@ export default function Home() {
       case 'budgets':
         return <BudgetsView budgets={data.budgets} transactions={monthTransactions} onSave={(category, monthlyLimit) => postAction({ action: 'budget', category, monthlyLimit }, 'Monthly budget updated.')} onDelete={(category) => postAction({ action: 'deleteBudget', category }, 'Budget envelope deleted.')} saving={saving} />;
       case 'toolkit':
-        return <ToolkitView data={data} transactions={monthTransactions} totals={totals} onNavigate={setActiveView} />;
+        return <ToolkitView data={data} transactions={monthTransactions} totals={totals} onNavigate={setActiveView} onImportRows={(rows) => postAction({ action: 'bulkTransactions', rows }, 'CSV transactions imported. Duplicate rows were skipped.')} />;
       case 'goals':
         return <GoalsView goals={data.goals} onContribute={(goalId, amount) => postAction({ action: 'goalContribution', goalId, amount }, 'Contribution added to your goal.')} onCreate={(name, target, deadline, kind) => postAction({ action: 'goalCreate', name, target, deadline, kind }, 'Savings goal created.')} onEdit={(id, name, target, deadline, kind) => postAction({ action: 'goalUpdate', id, name, target, deadline, kind }, 'Savings goal updated.')} onDelete={(goalId) => postAction({ action: 'deleteGoal', goalId }, 'Savings goal deleted.')} saving={saving} />;
       case 'accounts':
@@ -671,7 +672,9 @@ function ReportsView({ transactions, totals, month }: { transactions: Transactio
 
 type ToolkitTotals = { income: number; expenses: number; savings: number; budget: number; balance: number };
 
-function ToolkitView({ data, transactions, totals, onNavigate }: { data: FinanceData; transactions: Transaction[]; totals: ToolkitTotals; onNavigate: (view: View) => void }) {
+type ImportRow = { description: string; amount: number; occurredOn: string; type: TransactionType; category: string; account?: string; paymentMethod?: string };
+
+function ToolkitView({ data, transactions, totals, onNavigate, onImportRows }: { data: FinanceData; transactions: Transaction[]; totals: ToolkitTotals; onNavigate: (view: View) => void; onImportRows: (rows: ImportRow[]) => void }) {
   const [assistantPrompt, setAssistantPrompt] = useState('pace');
   const [splitTotal, setSplitTotal] = useState(1200);
   const [splitPeople, setSplitPeople] = useState(4);
@@ -725,8 +728,8 @@ function ToolkitView({ data, transactions, totals, onNavigate }: { data: Finance
       </div>
 
       <ToolkitSection title="Automate & predict" subtitle="Understand what is happening and what may happen next.">
-        <FeatureCard number={1} title="Automated Bank Sync" description="Connect accounts to fetch and categorize transactions." icon={PlugZap} status="Provider required" tone="planned"><p className="text-xs leading-5 text-[#71807c]">Your manual accounts stay available. A consent-based bank data provider must be configured before live syncing can be enabled.</p><Button disabled variant="outline" className="mt-4 w-full">Connect a bank</Button></FeatureCard>
-        <FeatureCard number={2} title="AI Receipt Scanner" description="Prepare a bill photo for secure OCR extraction." icon={Camera} status="Integration ready" tone="planned"><label className="mt-1 block cursor-pointer rounded-xl border border-dashed border-[#bdcdc7] bg-[#f8faf9] p-4 text-center text-sm font-medium"><Camera className="mx-auto mb-2 size-5 text-[#167463]" />{receiptName || 'Choose receipt photo'}<input className="sr-only" type="file" accept="image/*" onChange={(event) => setReceiptName(event.target.files?.[0]?.name ?? '')} /></label>{receiptName && <p className="mt-2 text-xs text-[#71807c]">Selected securely. OCR provider connection is still required before extraction.</p>}</FeatureCard>
+        <BankImportCard onImport={onImportRows} />
+        <ReceiptScannerCard receiptName={receiptName} setReceiptName={setReceiptName} />
         <FeatureCard number={3} title="Local AI Assistant" description="Ask private questions about your spending." icon={BrainCircuit} status="Works locally" tone="live"><NativeSelect value={assistantPrompt} onChange={(event) => setAssistantPrompt(event.target.value)} className="w-full"><NativeSelectOption value="pace">How long will my balance last?</NativeSelectOption><NativeSelectOption value="category">Where am I spending most?</NativeSelectOption><NativeSelectOption value="saving">How is my savings habit?</NativeSelectOption></NativeSelect><div className="mt-3 rounded-xl bg-[#eaf5f1] p-3 text-sm leading-5 text-[#365d54]">{assistantAnswer}</div><p className="mt-2 text-[11px] text-[#71807c]">Rule-based analysis runs in this browser; no external AI receives your data.</p></FeatureCard>
         <FeatureCard number={4} title="Predictive Alerts" description="Forecast when this month’s balance may run out." icon={Zap} status="Live forecast" tone="live"><p className="text-3xl font-semibold tracking-tight">{runwayDate ? runwayDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Learning'}</p><p className="mt-2 text-xs leading-5 text-[#71807c]">Based on {currency.format(dailyPace)} average daily spending through day {latestDay}. Forecasts are estimates, not guarantees.</p></FeatureCard>
         <FeatureCard number={5} title="Subscription Manager" description="Spot recurring digital costs before renewal." icon={RefreshCw} status="Transaction scan" tone="live"><p className="text-2xl font-semibold">{formatMoney(subscriptionTotal)}<span className="text-sm font-normal text-[#71807c]"> this month</span></p><p className="mt-2 text-xs leading-5 text-[#71807c]">{subscriptionRows.length ? `${subscriptionRows.length} subscription transaction${subscriptionRows.length === 1 ? '' : 's'} detected.` : 'No subscription expenses logged this month. Categorize one as Subscriptions to track it here.'}</p></FeatureCard>
@@ -761,6 +764,32 @@ function ToolkitView({ data, transactions, totals, onNavigate }: { data: Finance
 
 function ToolkitSection({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return <section><div className="mb-4"><h2 className="text-xl font-semibold tracking-tight">{title}</h2><p className="mt-1 text-sm text-[#71807c]">{subtitle}</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">{children}</div></section>;
+}
+
+function BankImportCard({ onImport }: { onImport: (rows: ImportRow[]) => void }) {
+  const [rows, setRows] = useState<ImportRow[]>([]);
+  const [fileName, setFileName] = useState('');
+  const parseCsv = (text: string) => {
+    const lines = text.split(/\r?\n/).filter(Boolean);
+    if (lines.length < 2) return [];
+    const split = (line: string) => line.match(/("(?:[^"]|"")*"|[^,]*)/g)?.filter((part) => part !== '').slice(0, -1).map((part) => part.replace(/^"|"$/g, '').replaceAll('""', '"').trim()) ?? [];
+    const headers = split(lines[0]).map((header) => header.toLowerCase().replaceAll(' ', ''));
+    return lines.slice(1).map((line) => {
+      const values = split(line); const get = (...names: string[]) => values[headers.findIndex((header) => names.includes(header))] ?? '';
+      const rawAmount = get('amount', 'debit', 'credit').replaceAll(',', '').replace(/[₹$]/g, ''); const amount = Math.abs(Number(rawAmount));
+      const rawType = get('type', 'transactiontype').toLowerCase(); const type: TransactionType = rawType.includes('income') || rawType.includes('credit') || rawType.includes('deposit') ? 'income' : rawType.includes('saving') ? 'savings' : 'expense';
+      return { description: get('description', 'name', 'merchant', 'narration') || 'Imported transaction', amount, occurredOn: get('date', 'occurredon', 'transactiondate') || today, type, category: get('category') || 'Personal', account: get('account') || 'Bank account', paymentMethod: get('paymentmethod', 'method') || 'Bank transfer' };
+    }).filter((row) => row.amount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn));
+  };
+  return <FeatureCard number={1} title="Free bank statement import" description="Upload a CSV export from any bank or UPI app, review it, then save it privately." icon={PlugZap} status="Free & private" tone="live"><label className="block cursor-pointer rounded-xl border border-dashed border-[#bdcdc7] bg-[#f8faf9] p-3 text-center text-xs font-medium"><UploadIcon />{fileName || 'Choose CSV statement'}<input className="sr-only" type="file" accept=".csv,text/csv" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setFileName(file.name); setRows(parseCsv(await file.text())); }} /></label>{rows.length > 0 && <><p className="mt-3 text-xs font-semibold text-[#167463]">Review {rows.length} rows before saving</p><div className="mt-2 max-h-24 overflow-y-auto rounded-lg bg-[#f3f6f4] p-2 text-[11px] text-[#536d66]">{rows.slice(0, 4).map((row, index) => <div key={`${row.description}-${index}`} className="flex justify-between gap-2 border-b border-white py-1 last:border-0"><span className="truncate">{row.description}</span><span>{currency.format(row.amount)}</span></div>)}{rows.length > 4 && <p className="pt-1">+ {rows.length - 4} more rows</p>}</div><Button className="mt-3 w-full bg-[#173e36]" onClick={() => { onImport(rows); setRows([]); }}>Import reviewed rows</Button></>}</FeatureCard>;
+}
+
+function UploadIcon() { return <Upload className="mx-auto mb-1 size-4 text-[#167463]" />; }
+
+function ReceiptScannerCard({ receiptName, setReceiptName }: { receiptName: string; setReceiptName: (name: string) => void }) {
+  const [status, setStatus] = useState('');
+  const [text, setText] = useState('');
+  return <FeatureCard number={2} title="Local receipt OCR" description="Extract text from a receipt image on this device using open-source OCR." icon={Camera} status="Runs locally" tone="live"><label className="block cursor-pointer rounded-xl border border-dashed border-[#bdcdc7] bg-[#f8faf9] p-3 text-center text-xs font-medium"><Camera className="mx-auto mb-1 size-4 text-[#167463]" />{receiptName || 'Choose receipt photo'}<input className="sr-only" type="file" accept="image/*" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setReceiptName(file.name); setStatus('Reading locally…'); setText(''); try { const { createWorker } = await import('tesseract.js'); const worker = await createWorker('eng'); const result = await worker.recognize(file); setText(result.data.text.trim()); await worker.terminate(); setStatus('Review the extracted text before logging it.'); } catch { setStatus('OCR could not read this image. Try a sharper, well-lit photo.'); } }} /></label>{status && <p className="mt-2 text-[11px] leading-4 text-[#71807c]">{status}</p>}{text && <div className="mt-2 max-h-20 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[#f3f6f4] p-2 text-[11px] text-[#536d66]">{text}</div>}<p className="mt-2 text-[10px] text-[#8a9994]">Nothing is uploaded to an external AI service.</p></FeatureCard>;
 }
 
 function FeatureCard({ number, title, description, icon: Icon, status, tone, children }: { number: number; title: string; description: string; icon: typeof WalletCards; status: string; tone: 'live' | 'planned' | 'attention'; children: React.ReactNode }) {
