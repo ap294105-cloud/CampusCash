@@ -49,6 +49,7 @@ import {
   Utensils,
   Upload,
   UserCircle,
+  Users,
   WalletCards,
   Zap,
 } from 'lucide-react';
@@ -93,7 +94,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 
-type View = 'overview' | 'transactions' | 'budgets' | 'toolkit' | 'goals' | 'accounts' | 'college' | 'reports' | 'settings';
+type View = 'overview' | 'transactions' | 'budgets' | 'toolkit' | 'goals' | 'accounts' | 'college' | 'reports' | 'settings' | 'admin';
 type TransactionType = 'income' | 'expense' | 'savings';
 
 type Transaction = {
@@ -145,6 +146,7 @@ const viewTitles: Record<View, { eyebrow: string; title: string; subtitle: strin
   college: { eyebrow: 'Academic money plan', title: 'College costs, without surprises.', subtitle: 'Prepare for fees, hostel, learning, subscriptions, and purchases.' },
   reports: { eyebrow: 'Money review', title: 'Turn activity into insight.', subtitle: 'See monthly trends, annual direction, and practical next steps.' },
   settings: { eyebrow: 'Workspace', title: 'Make Campus Cash yours.', subtitle: 'Manage demo data, categories, and privacy preferences.' },
+  admin: { eyebrow: 'Super admin', title: 'Operate Campus Cash safely.', subtitle: 'Review student accounts, audit activity, and export institution-owned backups.' },
 };
 
 const currency = new Intl.NumberFormat('en-IN', {
@@ -386,6 +388,8 @@ export default function Home() {
         return <ReportsView transactions={data.transactions} totals={totals} month={selectedMonth} />;
       case 'settings':
         return <SettingsView data={data} currentUser={currentUser} onSaveFees={(values) => postAction({ action: 'saveFeeSettings', ...values }, 'Fee settings updated across College Costs.')} onReset={() => postAction({ action: 'resetDemo' }, 'Demo transactions removed. Add your first real transaction whenever you’re ready.')} onDeleteData={() => postAction({ action: 'deleteMyData' }, 'Your private finance records have been deleted.')} saving={saving} />;
+      case 'admin':
+        return <AdminView />;
       default:
         return <Overview data={data} month={selectedMonth} transactions={monthTransactions} totals={totals} onNavigate={setActiveView} />;
     }
@@ -429,6 +433,7 @@ export default function Home() {
             </a>
           </div>
         )}
+        {currentUser?.email.toLowerCase() === 'ap294105@gmail.com' && <button type="button" onClick={() => setActiveView('admin')} className={`mt-3 flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${activeView === 'admin' ? 'bg-white text-[#153a33]' : 'text-white/55 hover:text-white'}`}><Users className="size-4" /> Admin dashboard</button>}
         <button type="button" onClick={() => setActiveView('settings')} className={`mt-4 flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${activeView === 'settings' ? 'bg-white text-[#153a33]' : 'text-white/55 hover:text-white'}`}><Settings className="size-4" /> Settings</button>
       </aside>
 
@@ -812,6 +817,15 @@ function ReceiptScannerCard({ receiptName, setReceiptName, onAdd }: { receiptNam
   };
   const clear = () => { setDraft(null); setText(''); setStatus(''); setReceiptName(''); };
   return <FeatureCard number={2} title="Local receipt OCR" description="Extract bill details on this device, review the filled form, then choose whether to add it." icon={Camera} status="Runs locally" tone="live"><label className="block cursor-pointer rounded-xl border border-dashed border-[#bdcdc7] bg-[#f8faf9] p-3 text-center text-xs font-medium"><Camera className="mx-auto mb-1 size-4 text-[#167463]" />{receiptName || 'Choose receipt photo'}<input className="sr-only" type="file" accept="image/*" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setReceiptName(file.name); setStatus('Reading locally…'); setText(''); setDraft(null); try { const { createWorker } = await import('tesseract.js'); const worker = await createWorker('eng'); const result = await worker.recognize(file); const raw = result.data.text.trim(); setText(raw); setDraft(parseReceipt(raw)); await worker.terminate(); setStatus('Details filled. Review them before deciding.'); } catch { setStatus('OCR could not read this image. Try a sharper, well-lit photo.'); } }} /></label>{status && <p className="mt-2 text-[11px] leading-4 text-[#71807c]">{status}</p>}{draft && <div className="mt-3 rounded-xl border border-[#d5e8e1] bg-[#f7fbf9] p-3"><p className="text-xs font-semibold text-[#167463]">Add this bill?</p><div className="mt-2 grid gap-2"><label className="text-[11px] text-[#71807c]">Description<Input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} className="mt-1 h-8 text-xs" /></label><div className="grid grid-cols-2 gap-2"><label className="text-[11px] text-[#71807c]">Amount (₹)<Input type="number" min="0" step="0.01" value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: Number(event.target.value) })} className="mt-1 h-8 text-xs" /></label><label className="text-[11px] text-[#71807c]">Date<Input type="date" value={draft.occurredOn} onChange={(event) => setDraft({ ...draft, occurredOn: event.target.value })} className="mt-1 h-8 text-xs" /></label></div><label className="text-[11px] text-[#71807c]">Category<Input value={draft.category} list="category-options" onChange={(event) => setDraft({ ...draft, category: event.target.value })} className="mt-1 h-8 text-xs" /></label></div><div className="mt-3 flex gap-2"><Button className="h-8 flex-1 bg-[#173e36] text-xs" disabled={!draft.amount || !draft.description} onClick={() => { onAdd(draft); clear(); }}>Yes, add bill</Button><Button variant="outline" className="h-8 flex-1 text-xs" onClick={clear}>No, discard</Button></div></div>}{text && !draft && <div className="mt-2 max-h-20 overflow-y-auto whitespace-pre-wrap rounded-lg bg-[#f3f6f4] p-2 text-[11px] text-[#536d66]">{text}</div>}<p className="mt-2 text-[10px] text-[#8a9994]">Nothing is uploaded to an external AI service.</p></FeatureCard>;
+}
+
+function AdminView() {
+  const [state, setState] = useState<{ students: Array<{ user_id: string; email: string; display_name: string; updated_at: string }>; transactionCount: number; auditLogs: Array<{ id: string; actor_email: string; action: string; target: string; created_at: string }> } | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { fetch('/api/admin', { cache: 'no-store' }).then(async (response) => { if (!response.ok) throw new Error('Admin access denied.'); setState(await response.json()); }).catch((reason) => setError(reason instanceof Error ? reason.message : 'Unable to load admin data.')); }, []);
+  if (error) return <EmptyState text={error} />;
+  if (!state) return <div className="rounded-2xl border border-[#dce5e1] bg-white p-8 text-sm text-[#71807c]">Loading admin controls…</div>;
+  return <div className="space-y-5"><div className="grid gap-4 sm:grid-cols-3"><MiniStat label="Student accounts" value={String(state.students.length)} icon={Users} /><MiniStat label="Total transactions" value={String(state.transactionCount)} icon={ReceiptText} /><MiniStat label="Audit events" value={String(state.auditLogs.length)} icon={ShieldCheck} /></div><div className="grid gap-5 xl:grid-cols-[1.15fr_0.85fr]"><Panel title="Student directory" subtitle="Identity metadata only — students’ financial details remain isolated"><div className="mt-5 space-y-3">{state.students.map((student) => <div key={student.user_id} className="flex items-center gap-3 rounded-xl border border-[#e2e9e6] p-3"><div className="grid size-9 place-items-center rounded-full bg-[#173e36] text-xs font-bold text-white">{student.display_name.slice(0, 1).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">{student.display_name}</p><p className="truncate text-xs text-[#71807c]">{student.email}</p></div><span className="text-[10px] text-[#71807c]">Active</span></div>)}</div></Panel><div className="space-y-5"><Panel title="Compliance controls" subtitle="Production safety baseline"><div className="mt-5 space-y-3 text-sm">{['ChatGPT identity authentication', 'Per-student data isolation', 'Admin access restricted by email', 'Audit trail for admin views', 'No plaintext passwords stored'].map((item) => <div key={item} className="flex items-center gap-2 rounded-lg bg-[#eff8f4] px-3 py-2 text-[#365d54]"><CircleCheck className="size-4 text-[#167463]" />{item}</div>)}</div></Panel><Panel title="Institution backup" subtitle="Export all transaction records for controlled retention"><a href="/api/admin?format=csv" className="mt-5 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-[#d6e0dc] text-sm font-semibold hover:bg-[#f3f6f4]"><Download className="size-4" />Download admin CSV backup</a></Panel></div></div><Panel title="Recent audit activity" subtitle="Most recent administrator events"><div className="mt-5 space-y-2">{state.auditLogs.slice(0, 10).map((log) => <div key={log.id} className="flex flex-col gap-1 border-b border-[#e8eeeb] pb-3 text-xs sm:flex-row sm:items-center sm:justify-between"><span className="font-semibold">{log.action} <span className="font-normal text-[#71807c]">on {log.target}</span></span><span className="text-[#71807c]">{new Date(log.created_at).toLocaleString('en-IN')}</span></div>)}</div></Panel></div>;
 }
 
 function FeatureCard({ number, title, description, icon: Icon, status, tone, children }: { number: number; title: string; description: string; icon: typeof WalletCards; status: string; tone: 'live' | 'planned' | 'attention'; children: React.ReactNode }) {
