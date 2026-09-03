@@ -119,7 +119,7 @@ const categories = [
   'Food', 'Travel', 'College fees', 'Hostel', 'Technology', 'AI / ML Learning',
   'Personal', 'Subscriptions', 'Savings', 'Scholarships', 'Allowance', 'Freelance',
 ];
-const today = new Date().toISOString().slice(0, 10);
+const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 const currentMonth = today.slice(0, 7);
 
 const navItems: { key: View; label: string; icon: typeof LayoutDashboard }[] = [
@@ -241,6 +241,15 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [message]);
 
+  useEffect(() => {
+    const refreshMonth = () => {
+      const liveMonth = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date()).slice(0, 7);
+      setSelectedMonth((previous) => previous === currentMonth ? liveMonth : previous);
+    };
+    const timer = window.setInterval(refreshMonth, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const monthTransactions = useMemo(
     () => data.transactions.filter((item) => item.occurredOn.startsWith(selectedMonth)),
     [data.transactions, selectedMonth],
@@ -357,7 +366,9 @@ export default function Home() {
     }
   })();
 
-  const title = viewTitles[activeView];
+  const title = activeView === 'overview'
+    ? { ...viewTitles.overview, eyebrow: new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Kolkata' }).format(new Date()) }
+    : viewTitles[activeView];
 
   return (
     <main className="min-h-screen bg-[#f2f5f3] pb-20 text-[#142925] lg:pb-0">
