@@ -4,6 +4,7 @@ import { getChatGPTUser } from '@/app/chatgpt-auth';
 const SUPER_ADMIN_EMAIL = 'ap294105@gmail.com';
 
 export async function GET(request: Request) {
+  const url = new URL(request.url);
   const user = await getChatGPTUser();
   if (!user || user.email.toLowerCase() !== SUPER_ADMIN_EMAIL) return Response.json({ error: 'Admin access required.' }, { status: 403 });
   const db = env.DB;
