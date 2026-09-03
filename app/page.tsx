@@ -459,24 +459,54 @@ function Overview({ data, transactions, totals, month, onNavigate }: { data: Fin
   const savingsRate = totals.income ? Math.round((totals.savings / totals.income) * 100) : 0;
   const budgetUsed = totals.budget ? Math.round((totals.expenses / totals.budget) * 100) : 0;
   const health = Math.max(0, Math.min(100, Math.round(70 + savingsRate * 0.7 - Math.max(0, budgetUsed - 70) * 0.5)));
-  const monthlyChart = ['2026-07', '2026-08', '2026-09'].map((key) => {
+  const historyMonths = [...new Set([...data.transactions.map((item) => item.occurredOn.slice(0, 7)), month])].filter((item) => item <= month).sort().slice(-3);
+  const monthlyChart = historyMonths.map((key) => {
     const rows = data.transactions.filter((item) => item.occurredOn.startsWith(key));
     const sum = (type: TransactionType) => toRupees(rows.filter((item) => item.type === type).reduce((total, item) => total + item.amountPaise, 0));
     return { month: monthLabel(key).slice(0, 3), income: sum('income'), expenses: sum('expense'), savings: sum('savings') };
   });
   const spending = data.budgets.map((budget) => ({ ...budget, spent: transactions.filter((item) => item.type === 'expense' && item.category === budget.category).reduce((sum, item) => sum + item.amountPaise, 0) })).sort((a, b) => b.spent - a.spent);
+  const expenseByCategory = transactions.filter((item) => item.type === 'expense').reduce<Record<string, number>>((map, item) => ({ ...map, [item.category]: (map[item.category] ?? 0) + item.amountPaise }), {});
+  const unplannedSpend = Object.entries(expenseByCategory).filter(([category]) => !data.budgets.some((budget) => budget.category === category)).reduce((sum, [, amount]) => sum + amount, 0);
   const categoryData = spending.filter((item) => item.spent > 0).slice(0, 5).map((item) => ({ name: item.category, value: toRupees(item.spent) }));
   const pieColors = ['#173e36', '#f19a4b', '#5d67b2', '#77a697', '#d56d4f'];
+  const latestDay = Math.max(1, ...transactions.map((item) => Number(item.occurredOn.slice(-2)) || 1));
+  const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
+  const dailyPace = toRupees(totals.expenses) / latestDay;
+  const safeDailySpend = Math.max(0, toRupees(totals.budget - totals.expenses) / Math.max(1, daysInMonth - latestDay + 1));
+  const runwayDays = dailyPace > 0 ? Math.max(0, Math.floor(toRupees(totals.balance) / dailyPace)) : null;
+  const runwayDate = runwayDays === null ? null : new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, latestDay + runwayDays);
+  const alerts = [
+    ...spending.filter((item) => item.monthlyLimitPaise > 0 && item.spent > item.monthlyLimitPaise).map((item) => ({ tone: 'danger', title: `${item.category} is over its limit`, copy: `${formatMoney(item.spent - item.monthlyLimitPaise)} over your monthly envelope.`, action: 'Budgets' })),
+    ...spending.filter((item) => item.monthlyLimitPaise > 0 && item.spent <= item.monthlyLimitPaise && item.spent / item.monthlyLimitPaise >= 0.8).map((item) => ({ tone: 'warning', title: `${item.category} is close to its limit`, copy: `${formatMoney(item.monthlyLimitPaise - item.spent)} remains in this envelope.`, action: 'Budgets' })),
+    ...(unplannedSpend > 0 ? [{ tone: 'warning', title: 'Some spending is unplanned', copy: `${formatMoney(unplannedSpend)} has no matching budget envelope yet.`, action: 'Budgets' }] : []),
+    ...(totals.savings === 0 && totals.income > 0 ? [{ tone: 'info', title: 'No savings transfer logged', copy: 'Protect your plan by moving even a small amount into a goal.', action: 'Goals' }] : []),
+  ].slice(0, 4);
+  const emergencyGoal = data.goals.find((goal) => goal.kind === 'Safety');
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="overflow-hidden rounded-3xl bg-[#173e36] p-6 text-white shadow-[0_18px_50px_rgba(24,62,54,0.16)] sm:p-8">
+        <div className="grid gap-7 xl:grid-cols-[1.25fr_0.75fr] xl:items-end">
+          <div><p className="text-sm font-medium text-[#f7ca84]">{monthLabel(month)} money plan</p><h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">You have {formatMoney(Math.max(0, totals.balance))} to direct with intention.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Your next best move: keep daily spending near {currency.format(safeDailySpend)}, then separate savings before the month gets busy.</p><div className="mt-5 flex flex-wrap gap-3"><Button className="bg-[#f5c77c] text-[#173e36] hover:bg-[#ffd99c]" onClick={() => onNavigate('transactions')}><Plus />Log a transaction</Button><Button variant="outline" className="border-white/20 bg-white/5 text-white hover:bg-white/10 hover:text-white" onClick={() => onNavigate('budgets')}>Review budgets <ChevronRight /></Button></div></div>
+          <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-1"><div className="rounded-2xl border border-white/10 bg-white/8 p-4"><p className="text-xs text-white/55">Balance runway</p><p className="mt-1 text-2xl font-semibold">{runwayDate ? runwayDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : 'Learning'}</p><p className="mt-1 text-xs text-white/55">{runwayDate ? `${runwayDays} days at your current pace` : 'Add spending to forecast it'}</p></div><div className="rounded-2xl border border-white/10 bg-white/8 p-4"><p className="text-xs text-white/55">Safe daily spend</p><p className="mt-1 text-2xl font-semibold">{currency.format(safeDailySpend)}</p><p className="mt-1 text-xs text-white/55">Remaining budget spread across the month</p></div><div className="rounded-2xl border border-white/10 bg-white/8 p-4"><p className="text-xs text-white/55">Savings rate</p><p className="mt-1 text-2xl font-semibold">{savingsRate}%</p><p className="mt-1 text-xs text-white/55">{savingsRate >= 15 ? 'A solid student habit' : 'Small transfers count too'}</p></div></div>
+        </div>
+      </section>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          { label: 'Balance left', value: formatMoney(totals.balance), meta: totals.income ? `${Math.max(0, Math.round((totals.balance / totals.income) * 100))}% of income` : 'Add income to begin', icon: WalletCards, tone: 'bg-[#173e36] text-white' },
-          { label: 'Spent this month', value: formatMoney(totals.expenses), meta: `${formatMoney(Math.max(0, totals.budget - totals.expenses))} under plan`, icon: TrendingDown, tone: 'bg-white' },
-          { label: 'Saved', value: formatMoney(totals.savings), meta: `${savingsRate}% savings rate`, icon: Target, tone: 'bg-white' },
-          { label: 'Money health', value: `${health} / 100`, meta: health >= 75 ? 'Looking strong' : 'Room to improve', icon: Sparkles, tone: 'bg-[#fff3df]' },
+          { label: 'Balance available', value: formatMoney(totals.balance), meta: totals.income ? `${Math.max(0, Math.round((totals.balance / totals.income) * 100))}% of income is still available` : 'Add income to begin', icon: WalletCards, tone: 'bg-white' },
+          { label: 'Budget used', value: `${budgetUsed}%`, meta: `${formatMoney(Math.max(0, totals.budget - totals.expenses))} remains in envelopes`, icon: TrendingDown, tone: 'bg-white' },
+          { label: 'Saved this month', value: formatMoney(totals.savings), meta: `${savingsRate}% of monthly income`, icon: Target, tone: 'bg-white' },
+          { label: 'Money health', value: `${health} / 100`, meta: health >= 75 ? 'Looking strong — keep the pace.' : 'One change can improve this.', icon: Sparkles, tone: 'bg-[#fff3df]' },
         ].map((item) => <MetricCard key={item.label} {...item} />)}
+      </div>
+
+      <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
+        <Panel title="Attention centre" subtitle="The clearest next actions from your current numbers" action={<Button variant="ghost" className="text-[#167463]" onClick={() => onNavigate('toolkit')}>Open toolkit <ChevronRight /></Button>}>
+          {alerts.length ? <div className="mt-5 space-y-3">{alerts.map((alert) => <button key={alert.title} type="button" onClick={() => onNavigate(alert.action === 'Goals' ? 'goals' : 'budgets')} className={`flex w-full items-start gap-3 rounded-xl border p-4 text-left transition hover:brightness-[0.98] ${alert.tone === 'danger' ? 'border-[#efd2cd] bg-[#fff4f1]' : alert.tone === 'warning' ? 'border-[#f0d9b6] bg-[#fff8ec]' : 'border-[#d5e8e1] bg-[#eff8f4]'}`}><div className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-full ${alert.tone === 'danger' ? 'bg-[#f9dfd9] text-[#b25244]' : alert.tone === 'warning' ? 'bg-[#ffedcc] text-[#a36819]' : 'bg-[#dbf0e8] text-[#167463]'}`}><Bell className="size-4" /></div><div className="min-w-0 flex-1"><p className="text-sm font-semibold">{alert.title}</p><p className="mt-1 text-xs leading-5 text-[#61756f]">{alert.copy}</p></div><ChevronRight className="mt-2 size-4 text-[#82928d]" /></button>)}</div> : <div className="mt-5 rounded-xl bg-[#eff8f4] p-5"><CircleCheck className="size-5 text-[#167463]" /><p className="mt-3 font-semibold">No urgent budget alerts.</p><p className="mt-1 text-sm text-[#61756f]">Keep logging transactions so Campus Cash can continue watching your plan.</p></div>}
+        </Panel>
+        <Panel title="Plan coverage" subtitle="How much of your spending already has a job"><div className="mt-5 space-y-5"><div><div className="flex items-end justify-between"><div><p className="text-sm font-semibold">Envelope coverage</p><p className="mt-1 text-xs text-[#71807c]">Expenses assigned to a monthly category limit</p></div><strong>{totals.expenses ? Math.max(0, Math.round(((totals.expenses - unplannedSpend) / totals.expenses) * 100)) : 100}%</strong></div><Progress value={totals.expenses ? Math.max(0, ((totals.expenses - unplannedSpend) / totals.expenses) * 100) : 100} className="mt-3"><ProgressTrack className="h-2"><ProgressIndicator className="bg-[#198f7d]" /></ProgressTrack></Progress></div><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-[#f3f6f4] p-4"><p className="text-xs text-[#71807c]">Planned expenses</p><p className="mt-1 text-xl font-semibold">{formatMoney(totals.expenses - unplannedSpend)}</p></div><div className="rounded-xl bg-[#fff3df] p-4"><p className="text-xs text-[#765c35]">Unplanned expenses</p><p className="mt-1 text-xl font-semibold">{formatMoney(unplannedSpend)}</p></div></div><Button variant="outline" className="w-full" onClick={() => onNavigate('budgets')}>Assign every rupee a job <ChevronRight /></Button></div></Panel>
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.45fr_0.8fr]">
@@ -496,12 +526,9 @@ function Overview({ data, transactions, totals, month, onNavigate }: { data: Fin
         <Panel title="Budget watch" subtitle="Your monthly limits vs actual spending" action={<Button variant="ghost" className="text-[#167463]" onClick={() => onNavigate('budgets')}>Manage <ChevronRight /></Button>}>
           <div className="mt-5 grid gap-5 sm:grid-cols-2">{spending.slice(0, 6).map((item) => <BudgetMeter key={item.category} name={item.category} spent={item.spent} total={item.monthlyLimitPaise} />)}</div>
         </Panel>
-        <Panel title="Emergency fund" subtitle="Your first line of financial safety" action={<PiggyBank className="size-5 text-[#198f7d]" />}>
-          {data.goals.filter((goal) => goal.kind === 'Safety').map((goal) => {
-            const percent = Math.round((goal.currentPaise / goal.targetPaise) * 100);
-            return <div key={goal.id} className="mt-6"><div className="flex items-end justify-between"><p className="text-3xl font-semibold tracking-tight">{formatMoney(goal.currentPaise)}</p><span className="text-sm font-semibold">{percent}%</span></div><Progress value={percent} className="mt-4"><ProgressTrack className="h-2"><ProgressIndicator className="bg-[#198f7d]" /></ProgressTrack></Progress><p className="mt-3 text-sm text-[#6d817b]">{formatMoney(goal.targetPaise - goal.currentPaise)} to reach your {formatMoney(goal.targetPaise)} target.</p><Button variant="outline" className="mt-5 w-full" onClick={() => onNavigate('goals')}>View savings goals</Button></div>;
-          })}
-        </Panel>
+        <Panel title="Goal momentum" subtitle="Keep the goals that matter moving" action={<PiggyBank className="size-5 text-[#198f7d]" />}>
+          {emergencyGoal ? <div className="mt-6"><div className="flex items-end justify-between"><div><p className="text-sm text-[#71807c]">{emergencyGoal.name}</p><p className="mt-1 text-3xl font-semibold tracking-tight">{formatMoney(emergencyGoal.currentPaise)}</p></div><span className="text-sm font-semibold text-[#167463]">{Math.round((emergencyGoal.currentPaise / emergencyGoal.targetPaise) * 100)}%</span></div><Progress value={Math.round((emergencyGoal.currentPaise / emergencyGoal.targetPaise) * 100)} className="mt-4"><ProgressTrack className="h-2"><ProgressIndicator className="bg-[#198f7d]" /></ProgressTrack></Progress><p className="mt-3 text-sm text-[#6d817b]">{formatMoney(Math.max(0, emergencyGoal.targetPaise - emergencyGoal.currentPaise))} remaining to reach {formatMoney(emergencyGoal.targetPaise)}.</p><div className="mt-4 space-y-2">{data.goals.filter((goal) => goal.id !== emergencyGoal.id).slice(0, 2).map((goal) => <div key={goal.id} className="flex items-center justify-between rounded-lg bg-[#f3f6f4] px-3 py-2 text-xs"><span className="font-medium">{goal.name}</span><span>{Math.round((goal.currentPaise / goal.targetPaise) * 100)}%</span></div>)}</div><Button variant="outline" className="mt-5 w-full" onClick={() => onNavigate('goals')}>Manage savings goals</Button></div> : <EmptyState text="Create a savings goal to see progress here." />}
+      </Panel>
       </div>
 
       <Panel className="mt-5" title="Recent activity" subtitle="Your latest money movements" action={<Button variant="ghost" className="text-[#167463]" onClick={() => onNavigate('transactions')}>View all <ChevronRight /></Button>}>
