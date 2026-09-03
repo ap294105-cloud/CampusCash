@@ -324,9 +324,14 @@ export async function POST(request: Request) {
       const id = String(body.id ?? '');
       const description = String(body.description ?? '').trim();
       const category = String(body.category ?? '').trim();
+      const type = String(body.type ?? 'expense');
+      const occurredOn = String(body.occurredOn ?? '');
+      const account = String(body.account ?? '').trim();
+      const paymentMethod = String(body.paymentMethod ?? '').trim();
+      const note = String(body.note ?? '');
       const amount = Number(body.amount);
-      if (!id || !description || !category || !Number.isFinite(amount) || amount <= 0) return Response.json({ error: 'Please enter valid transaction details.' }, { status: 400 });
-      await db.prepare('UPDATE student_transactions SET description = ?, category = ?, amount_paise = ? WHERE id = ? AND user_id = ?').bind(description, category, Math.round(amount * 100), id, user.userId).run();
+      if (!id || !description || !category || !occurredOn || !account || !paymentMethod || !['income', 'expense', 'savings'].includes(type) || !Number.isFinite(amount) || amount <= 0) return Response.json({ error: 'Please enter valid transaction details.' }, { status: 400 });
+      await db.prepare('UPDATE student_transactions SET description = ?, category = ?, amount_paise = ?, type = ?, occurred_on = ?, account = ?, payment_method = ?, note = ? WHERE id = ? AND user_id = ?').bind(description, category, Math.round(amount * 100), type, occurredOn, account, paymentMethod, note, id, user.userId).run();
       return Response.json({ ok: true });
     }
 
@@ -363,6 +368,17 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
+    if (action === 'goalUpdate') {
+      const id = String(body.id ?? '');
+      const name = String(body.name ?? '').trim();
+      const target = Number(body.target);
+      const deadline = String(body.deadline ?? '');
+      const kind = String(body.kind ?? 'Wishlist').trim() || 'Wishlist';
+      if (!id || !name || !Number.isFinite(target) || target <= 0 || !deadline) return Response.json({ error: 'Please enter a valid goal.' }, { status: 400 });
+      await db.prepare('UPDATE student_goals SET name = ?, target_paise = ?, deadline = ?, kind = ? WHERE id = ? AND user_id = ?').bind(name, Math.round(target * 100), deadline, kind, id, user.userId).run();
+      return Response.json({ ok: true });
+    }
+
     if (action === 'accountCreate') {
       const name = String(body.name ?? '').trim();
       const type = String(body.type ?? 'Other').trim() || 'Other';
@@ -377,7 +393,8 @@ export async function POST(request: Request) {
       const name = String(body.name ?? '').trim();
       const balance = Number(body.balance ?? 0);
       if (!id || !name || !Number.isFinite(balance) || balance < 0) return Response.json({ error: 'Please enter a valid account.' }, { status: 400 });
-      await db.prepare('UPDATE student_accounts SET name = ?, balance_paise = ? WHERE id = ? AND user_id = ?').bind(name, Math.round(balance * 100), id, user.userId).run();
+      const type = String(body.type ?? 'Other').trim() || 'Other';
+      await db.prepare('UPDATE student_accounts SET name = ?, type = ?, balance_paise = ? WHERE id = ? AND user_id = ?').bind(name, type, Math.round(balance * 100), id, user.userId).run();
       return Response.json({ ok: true });
     }
 
