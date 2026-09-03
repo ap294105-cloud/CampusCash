@@ -300,6 +300,21 @@ export async function POST(request: Request) {
       return Response.json({ ok: true });
     }
 
+    if (action === 'deleteBudget') {
+      await db.prepare('DELETE FROM student_budgets WHERE user_id = ? AND category = ?').bind(user.userId, String(body.category ?? '')).run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'updateTransaction') {
+      const id = String(body.id ?? '');
+      const description = String(body.description ?? '').trim();
+      const category = String(body.category ?? '').trim();
+      const amount = Number(body.amount);
+      if (!id || !description || !category || !Number.isFinite(amount) || amount <= 0) return Response.json({ error: 'Please enter valid transaction details.' }, { status: 400 });
+      await db.prepare('UPDATE student_transactions SET description = ?, category = ?, amount_paise = ? WHERE id = ? AND user_id = ?').bind(description, category, Math.round(amount * 100), id, user.userId).run();
+      return Response.json({ ok: true });
+    }
+
     if (action === 'goalContribution') {
       const goalId = String(body.goalId ?? '');
       const amount = Number(body.amount);
@@ -315,6 +330,44 @@ export async function POST(request: Request) {
           WHERE id = ? AND user_id = ?`)
         .bind(Math.round(amount * 100), goalId, user.userId)
         .run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'goalCreate') {
+      const name = String(body.name ?? '').trim();
+      const target = Number(body.target);
+      const deadline = String(body.deadline ?? '');
+      const kind = String(body.kind ?? 'Wishlist').trim() || 'Wishlist';
+      if (!name || !Number.isFinite(target) || target <= 0 || !deadline) return Response.json({ error: 'Please enter a valid goal.' }, { status: 400 });
+      await db.prepare('INSERT INTO student_goals (id, user_id, name, target_paise, current_paise, deadline, kind) VALUES (?, ?, ?, ?, 0, ?, ?)').bind(`${user.userId}:${crypto.randomUUID()}`, user.userId, name, Math.round(target * 100), deadline, kind).run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'deleteGoal') {
+      await db.prepare('DELETE FROM student_goals WHERE id = ? AND user_id = ?').bind(String(body.goalId ?? ''), user.userId).run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'accountCreate') {
+      const name = String(body.name ?? '').trim();
+      const type = String(body.type ?? 'Other').trim() || 'Other';
+      const balance = Number(body.balance ?? 0);
+      if (!name || !Number.isFinite(balance) || balance < 0) return Response.json({ error: 'Please enter a valid account.' }, { status: 400 });
+      await db.prepare('INSERT INTO student_accounts (id, user_id, name, type, balance_paise) VALUES (?, ?, ?, ?, ?)').bind(`${user.userId}:${crypto.randomUUID()}`, user.userId, name, type, Math.round(balance * 100)).run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'accountUpdate') {
+      const id = String(body.id ?? '');
+      const name = String(body.name ?? '').trim();
+      const balance = Number(body.balance ?? 0);
+      if (!id || !name || !Number.isFinite(balance) || balance < 0) return Response.json({ error: 'Please enter a valid account.' }, { status: 400 });
+      await db.prepare('UPDATE student_accounts SET name = ?, balance_paise = ? WHERE id = ? AND user_id = ?').bind(name, Math.round(balance * 100), id, user.userId).run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'accountDelete') {
+      await db.prepare('DELETE FROM student_accounts WHERE id = ? AND user_id = ?').bind(String(body.id ?? ''), user.userId).run();
       return Response.json({ ok: true });
     }
 
