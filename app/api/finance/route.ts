@@ -57,6 +57,13 @@ const schemaStatements = [
     hostel_yearly_paise INTEGER NOT NULL DEFAULT 750000,
     updated_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_email TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_student_transactions_user_date_type
     ON student_transactions(user_id, occurred_on, type)`,
   `CREATE INDEX IF NOT EXISTS idx_student_transactions_user_category_date
@@ -255,6 +262,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as Record<string, unknown>;
     const action = String(body.action ?? 'transaction');
     const db = env.DB;
+    await db.prepare('INSERT INTO audit_logs (id, actor_email, action, target, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), user.email, action, 'finance_workspace', new Date().toISOString()).run();
 
     if (action === 'transaction') {
       const description = String(body.description ?? '').trim();
@@ -478,6 +486,7 @@ export async function DELETE(request: Request) {
     if (!id) {
       return Response.json({ error: 'Transaction id is required.' }, { status: 400 });
     }
+    await env.DB.prepare('INSERT INTO audit_logs (id, actor_email, action, target, created_at) VALUES (?, ?, ?, ?, ?)').bind(crypto.randomUUID(), user.email, 'deleteTransaction', id, new Date().toISOString()).run();
     await env.DB
       .prepare('DELETE FROM student_transactions WHERE id = ? AND user_id = ?')
       .bind(id, user.userId)
