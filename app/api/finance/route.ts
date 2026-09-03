@@ -49,6 +49,14 @@ const schemaStatements = [
     type TEXT NOT NULL,
     balance_paise INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS student_fee_settings (
+    user_id TEXT PRIMARY KEY,
+    semester_one_paise INTEGER NOT NULL DEFAULT 900000,
+    semester_two_paise INTEGER NOT NULL DEFAULT 900000,
+    exam_lab_paise INTEGER NOT NULL DEFAULT 220000,
+    hostel_yearly_paise INTEGER NOT NULL DEFAULT 750000,
+    updated_at TEXT NOT NULL
+  )`,
   `CREATE INDEX IF NOT EXISTS idx_student_transactions_user_date_type
     ON student_transactions(user_id, occurred_on, type)`,
   `CREATE INDEX IF NOT EXISTS idx_student_transactions_user_category_date
@@ -98,6 +106,8 @@ async function ensureStudentWorkspace(user: ChatGPTUser) {
     .prepare('SELECT demo_initialized AS demoInitialized FROM student_profiles WHERE user_id = ?')
     .bind(user.userId)
     .first<{ demoInitialized: number }>();
+
+  await db.prepare('INSERT OR IGNORE INTO student_fee_settings (user_id, updated_at) VALUES (?, ?)').bind(user.userId, now).run();
 
   if (!profile?.demoInitialized) {
     const transactionStatements = demoTransactions.map((row) =>
@@ -175,7 +185,7 @@ export async function GET(request: Request) {
   try {
     await ensureStudentWorkspace(user);
     const db = env.DB;
-    const [transactions, budgets, goals, accounts] = await Promise.all([
+    const [transactions, budgets, goals, accounts, feeSettings] = await Promise.all([
       db
         .prepare(`SELECT id, description, amount_paise, type, category, occurred_on, account,
           payment_method, note, is_demo, created_at
@@ -195,6 +205,10 @@ export async function GET(request: Request) {
         .prepare('SELECT id, name, type, balance_paise FROM student_accounts WHERE user_id = ? ORDER BY name')
         .bind(user.userId)
         .all<D1Row>(),
+      db
+        .prepare('SELECT semester_one_paise, semester_two_paise, exam_lab_paise, hostel_yearly_paise FROM student_fee_settings WHERE user_id = ?')
+        .bind(user.userId)
+        .first<D1Row>(),
     ]);
 
     if (new URL(request.url).searchParams.get('format') === 'csv') {
@@ -217,6 +231,7 @@ export async function GET(request: Request) {
       budgets: normalizeRows(budgets.results),
       goals: normalizeRows(goals.results),
       accounts: normalizeRows(accounts.results),
+      feeSettings: feeSettings ? normalizeRows([feeSettings])[0] : null,
     });
   } catch (error) {
     return Response.json(
@@ -368,6 +383,16 @@ export async function POST(request: Request) {
 
     if (action === 'accountDelete') {
       await db.prepare('DELETE FROM student_accounts WHERE id = ? AND user_id = ?').bind(String(body.id ?? ''), user.userId).run();
+      return Response.json({ ok: true });
+    }
+
+    if (action === 'saveFeeSettings') {
+      const values = ['semesterOne', 'semesterTwo', 'examLab', 'hostelYearly'].map((key) => Number(body[key] ?? 0));
+      if (values.some((value) => !Number.isFinite(value) || value < 0)) return Response.json({ error: 'Fee values must be zero or more.' }, { status: 400 });
+      await db.prepare(`INSERT INTO student_fee_settings (user_id, semester_one_paise, semester_two_paise, exam_lab_paise, hostel_yearly_paise, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET semester_one_paise = excluded.semester_one_paise, semester_two_paise = excluded.semester_two_paise, exam_lab_paise = excluded.exam_lab_paise, hostel_yearly_paise = excluded.hostel_yearly_paise, updated_at = excluded.updated_at`)
+        .bind(user.userId, ...values.map((value) => Math.round(value * 100)), new Date().toISOString()).run();
       return Response.json({ ok: true });
     }
 
