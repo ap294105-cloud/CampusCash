@@ -466,7 +466,7 @@ export default function Home() {
         <div className="mx-auto max-w-[1440px] px-4 py-7 sm:px-7 lg:px-10 lg:py-9">
           <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
             <div>
-              <p className="text-sm font-medium text-[#6d817b]">{title.eyebrow}</p>
+              <p suppressHydrationWarning className="text-sm font-medium text-[#6d817b]">{title.eyebrow}</p>
               <h1 className="mt-1 text-3xl font-semibold tracking-[-0.04em] text-[#142925] sm:text-4xl">{title.title}</h1>
               <p className="mt-2 max-w-2xl text-sm text-[#6d817b]">{title.subtitle}</p>
             </div>
