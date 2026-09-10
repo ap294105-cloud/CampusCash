@@ -1,5 +1,7 @@
 'use client';
 
+import { StudentUpgrades } from '@/components/student-upgrades';
+import { readCsv, validDate } from '@/lib/student-planner';
 import { SpatialBackdrop } from '@/components/spatial-backdrop';
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -313,6 +315,7 @@ export default function Home() {
       await loadData();
       setDialogOpen(false);
       setMessage('Transaction saved — your totals are up to date.');
+      if (form.get('type') === 'income') window.dispatchEvent(new Event('campus-celebrate'));
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save the transaction.');
     } finally {
@@ -332,8 +335,11 @@ export default function Home() {
       if (!response.ok) throw new Error(result.error ?? 'Unable to save your change.');
       await loadData();
       setMessage(successMessage);
+      if (payload.action === 'goalContribution' || (payload.action === 'transaction' && payload.type === 'income')) window.dispatchEvent(new Event('campus-celebrate'));
+      return true;
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Unable to save your change.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -381,7 +387,7 @@ export default function Home() {
       case 'toolkit':
         return <ToolkitView data={data} transactions={monthTransactions} totals={totals} onNavigate={setActiveView} onImportRows={(rows) => postAction({ action: 'bulkTransactions', rows }, 'CSV transactions imported. Duplicate rows were skipped.')} onAddReceipt={(receipt) => postAction({ action: 'transaction', ...receipt }, 'Receipt added as a transaction.')} />;
       case 'goals':
-        return <GoalsView goals={data.goals} onContribute={(goalId, amount) => postAction({ action: 'goalContribution', goalId, amount }, 'Contribution added to your goal.')} onCreate={(name, target, deadline, kind) => postAction({ action: 'goalCreate', name, target, deadline, kind }, 'Savings goal created.')} onEdit={(id, name, target, deadline, kind) => postAction({ action: 'goalUpdate', id, name, target, deadline, kind }, 'Savings goal updated.')} onDelete={(goalId) => postAction({ action: 'deleteGoal', goalId }, 'Savings goal deleted.')} saving={saving} />;
+        return <><p className="mb-4 text-sm text-[#b3cbbf]">Your 3D savings model comes together as your combined goals approach completion.</p><GoalsView goals={data.goals} onContribute={(goalId, amount) => postAction({ action: 'goalContribution', goalId, amount }, 'Contribution added to your goal.')} onCreate={(name, target, deadline, kind) => postAction({ action: 'goalCreate', name, target, deadline, kind }, 'Savings goal created.')} onEdit={(id, name, target, deadline, kind) => postAction({ action: 'goalUpdate', id, name, target, deadline, kind }, 'Savings goal updated.')} onDelete={(goalId) => postAction({ action: 'deleteGoal', goalId }, 'Savings goal deleted.')} saving={saving} /></>;
       case 'accounts':
         return <AccountsView accounts={data.accounts} transactions={monthTransactions} onCreate={(name, type, balance) => postAction({ action: 'accountCreate', name, type, balance }, 'Account added.')} onEdit={(id, name, type, balance) => postAction({ action: 'accountUpdate', id, name, type, balance }, 'Account updated.')} onDelete={(id) => postAction({ action: 'accountDelete', id }, 'Account deleted.')} />;
       case 'college':
@@ -403,7 +409,7 @@ export default function Home() {
 
   return (
     <main suppressHydrationWarning className="spatial-app min-h-screen pb-20 text-[#ecf4ed] lg:pb-0" data-view={activeView}>
-      <SpatialBackdrop view={activeView} />
+      <SpatialBackdrop view={activeView} goalProgress={data.goals.length ? data.goals.reduce((n,g)=>n+Math.min(g.currentPaise,g.targetPaise),0)/Math.max(1,data.goals.reduce((n,g)=>n+g.targetPaise,0)) : 0} />
       <aside className="spatial-sidebar fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-[#29473e] bg-[#183f32] px-5 py-6 text-white lg:flex lg:flex-col">
         <button type="button" onClick={() => setActiveView('overview')} className="flex items-center gap-3 px-2 text-left">
           <div className="grid size-10 place-items-center rounded-2xl bg-[#f2b45d] text-[#ecf4ed]"><CircleDollarSign className="size-5" /></div>
@@ -419,7 +425,7 @@ export default function Home() {
         <div className="mt-auto rounded-2xl border border-white/10 bg-[#10271f]/6 p-4">
           <div className="mb-3 flex items-center gap-2 text-xs font-medium text-[#eac491]"><Sparkles className="size-3.5" /> Smart money nudge</div>
           <p className="text-sm leading-5 text-white/80">
-            Your safe pace is <strong className="text-white">{formatMoney(Math.max(0, totals.budget - totals.expenses) / 28)}</strong> per day this month.
+            See your daily allowance on Overview, with bills and savings reserved.
           </p>
         </div>
         {currentUser && (
@@ -474,7 +480,7 @@ export default function Home() {
             </div>
             {activeView !== 'settings' && <NativeSelect value={selectedMonth} onChange={(event) => setSelectedMonth(event.target.value)} aria-label="Select month" className="w-44 bg-[#10271f] shadow-sm">{availableMonths.map((month) => <NativeSelectOption key={month} value={month}>{monthLabel(month)}</NativeSelectOption>)}</NativeSelect>}
           </div>
-          <div className="spatial-page mt-7" key={activeView}>{page}</div>
+          <div className="spatial-page mt-7" key={activeView}>{!loading && currentUser && <StudentUpgrades data={data} userKey={currentUser.email} onRefresh={loadData} onNavigate={setActiveView} view={activeView}/>} {page}</div>
         </div>
       </section>
 
@@ -530,7 +536,7 @@ function Overview({ data, transactions, totals, month, onNavigate }: { data: Fin
   const unplannedSpend = Object.entries(expenseByCategory).filter(([category]) => !data.budgets.some((budget) => budget.category === category)).reduce((sum, [, amount]) => sum + amount, 0);
   const categoryData = spending.filter((item) => item.spent > 0).slice(0, 5).map((item) => ({ name: item.category, value: toRupees(item.spent) }));
   const pieColors = ['#173e36', '#e7bb79', '#5d67b2', '#77a697', '#d56d4f'];
-  const latestDay = Math.max(1, ...transactions.map((item) => Number(item.occurredOn.slice(-2)) || 1));
+  const latestDay = month === currentMonth ? Number(today.slice(-2)) : month < currentMonth ? new Date(Number(month.slice(0,4)),Number(month.slice(5,7)),0).getDate() : 1;
   const daysInMonth = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate();
   const dailyPace = toRupees(totals.expenses) / latestDay;
   const safeDailySpend = Math.max(0, toRupees(totals.budget - totals.expenses) / Math.max(1, daysInMonth - latestDay + 1));
@@ -549,7 +555,7 @@ function Overview({ data, transactions, totals, month, onNavigate }: { data: Fin
       {!data.transactions.length && <div className="mb-5 rounded-2xl border border-[#29473e] bg-[#122b24] p-5"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold text-[#ecf4ed]">Your workspace is ready for real data.</p><p className="mt-1 text-sm leading-5 text-[#a2bcb0]">No sample transactions are shown. Add your first allowance, expense, or savings transfer to activate personalized insights.</p></div><Button className="bg-[#183f32]" onClick={() => onNavigate('transactions')}><Plus />Add first transaction</Button></div></div>}
       <section className="spatial-plan" aria-label="Monthly money plan">
         <div><p className="spatial-kicker">{monthLabel(month)} / MONEY PLAN</p><h2>{formatMoney(Math.max(0, totals.balance))}<span> available to direct</span></h2><div className="mt-4 flex flex-wrap gap-2"><Button onClick={() => onNavigate('transactions')}><Plus />Log a transaction</Button><Button variant="outline" onClick={() => onNavigate('budgets')}>Review budgets <ChevronRight /></Button></div></div>
-        <div className="spatial-plan-stats"><div><span>Daily pace</span><strong>{currency.format(safeDailySpend)}</strong></div><div><span>Savings rate</span><strong>{savingsRate}%</strong></div><div><span>Runway</span><strong>{runwayDate ? `${runwayDays} days` : 'Learning'}</strong></div></div>
+        <div className="spatial-plan-stats"><div><span>Budget left / day</span><strong>{currency.format(safeDailySpend)}</strong></div><div><span>Savings rate</span><strong>{savingsRate}%</strong></div><div><span>Runway</span><strong>{runwayDate ? `${runwayDays} days` : 'Learning'}</strong></div></div>
       </section>
 
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -691,7 +697,7 @@ type ToolkitTotals = { income: number; expenses: number; savings: number; budget
 type ImportRow = { description: string; amount: number; occurredOn: string; type: TransactionType; category: string; account?: string; paymentMethod?: string };
 type ReceiptDraft = { description: string; amount: number; occurredOn: string; category: string };
 
-function ToolkitView({ data, transactions, totals, onNavigate, onImportRows, onAddReceipt }: { data: FinanceData; transactions: Transaction[]; totals: ToolkitTotals; onNavigate: (view: View) => void; onImportRows: (rows: ImportRow[]) => void; onAddReceipt: (receipt: ReceiptDraft) => void }) {
+function ToolkitView({ data, transactions, totals, onNavigate, onImportRows, onAddReceipt }: { data: FinanceData; transactions: Transaction[]; totals: ToolkitTotals; onNavigate: (view: View) => void; onImportRows: (rows: ImportRow[]) => Promise<boolean | undefined>; onAddReceipt: (receipt: ReceiptDraft) => void }) {
   const [assistantPrompt, setAssistantPrompt] = useState('pace');
   const [splitTotal, setSplitTotal] = useState(1200);
   const [splitPeople, setSplitPeople] = useState(4);
@@ -706,7 +712,7 @@ function ToolkitView({ data, transactions, totals, onNavigate, onImportRows, onA
   const [receiptName, setReceiptName] = useState('');
 
   const expenseRows = transactions.filter((item) => item.type === 'expense');
-  const latestDay = Math.max(1, ...transactions.map((item) => Number(item.occurredOn.slice(-2)) || 1));
+  const latestDay = Number(today.slice(-2));
   const dailyPace = toRupees(totals.expenses) / latestDay;
   const runwayDays = dailyPace > 0 ? Math.max(0, Math.floor(toRupees(totals.balance) / dailyPace)) : null;
   const runwayDate = runwayDays === null ? null : new Date(2026, 8, latestDay + runwayDays);
@@ -739,7 +745,7 @@ function ToolkitView({ data, transactions, totals, onNavigate, onImportRows, onA
     <div className="space-y-8">
       <div className="rounded-3xl bg-[#183f32] p-6 text-white sm:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div><span className="rounded-full bg-[#10271f]/10 px-3 py-1 text-xs font-semibold text-[#eac491]">20 tools • one private workspace</span><h2 className="mt-4 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">Built for college life, from canteen splits to education loans.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Your planning tools work now. Features involving banks, investments, OCR, live discounts, or credit bureaus are marked clearly until a verified provider is connected.</p></div>
+          <div><span className="rounded-full bg-[#10271f]/10 px-3 py-1 text-xs font-semibold text-[#eac491]">20 tools • one private workspace</span><h2 className="mt-4 max-w-2xl text-2xl font-semibold tracking-tight sm:text-3xl">Built for college life, from canteen splits to education loans.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-white/65">Manage upcoming bills and shared costs above. Explore imports, receipt scanning, and planning tools below.</p></div>
           <div className="grid min-w-64 grid-cols-2 gap-3"><div className="rounded-2xl bg-[#10271f]/8 p-4"><p className="text-xs text-white/55">Safe to spend</p><p className="mt-1 text-xl font-semibold">{formatMoney(monthlyBudgetLeft)}</p></div><div className="rounded-2xl bg-[#10271f]/8 p-4"><p className="text-xs text-white/55">Savings streak</p><p className="mt-1 text-xl font-semibold">{activeSavingsMonths} months</p></div></div>
         </div>
       </div>
@@ -783,22 +789,14 @@ function ToolkitSection({ title, subtitle, children }: { title: string; subtitle
   return <section><div className="mb-4"><h2 className="text-xl font-semibold tracking-tight">{title}</h2><p className="mt-1 text-sm text-[#a2bcb0]">{subtitle}</p></div><div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">{children}</div></section>;
 }
 
-function BankImportCard({ onImport }: { onImport: (rows: ImportRow[]) => void }) {
-  const [rows, setRows] = useState<ImportRow[]>([]);
-  const [fileName, setFileName] = useState('');
-  const parseCsv = (text: string) => {
-    const lines = text.split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) return [];
-    const split = (line: string) => line.match(/("(?:[^"]|"")*"|[^,]*)/g)?.filter((part) => part !== '').slice(0, -1).map((part) => part.replace(/^"|"$/g, '').replaceAll('""', '"').trim()) ?? [];
-    const headers = split(lines[0]).map((header) => header.toLowerCase().replaceAll(' ', ''));
-    return lines.slice(1).map((line) => {
-      const values = split(line); const get = (...names: string[]) => values[headers.findIndex((header) => names.includes(header))] ?? '';
-      const rawAmount = get('amount', 'debit', 'credit').replaceAll(',', '').replace(/[₹$]/g, ''); const amount = Math.abs(Number(rawAmount));
-      const rawType = get('type', 'transactiontype').toLowerCase(); const type: TransactionType = rawType.includes('income') || rawType.includes('credit') || rawType.includes('deposit') ? 'income' : rawType.includes('saving') ? 'savings' : 'expense';
-      return { description: get('description', 'name', 'merchant', 'narration') || 'Imported transaction', amount, occurredOn: get('date', 'occurredon', 'transactiondate') || today, type, category: get('category') || 'Personal', account: get('account') || 'Bank account', paymentMethod: get('paymentmethod', 'method') || 'Bank transfer' };
-    }).filter((row) => row.amount > 0 && /^\d{4}-\d{2}-\d{2}$/.test(row.occurredOn));
-  };
-  return <FeatureCard number={1} title="Free bank statement import" description="Upload a CSV export from any bank or UPI app, review it, then save it privately." icon={PlugZap} status="Free & private" tone="live"><label className="block cursor-pointer rounded-xl border border-dashed border-[#29473e] bg-[#122b24] p-3 text-center text-xs font-medium"><UploadIcon />{fileName || 'Choose CSV statement'}<input className="sr-only" type="file" accept=".csv,text/csv" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setFileName(file.name); setRows(parseCsv(await file.text())); }} /></label>{rows.length > 0 && <><p className="mt-3 text-xs font-semibold text-[#ecf4ed]">Review {rows.length} rows before saving</p><div className="mt-2 max-h-24 overflow-y-auto rounded-lg bg-[#122b24] p-2 text-[11px] text-[#a2bcb0]">{rows.slice(0, 4).map((row, index) => <div key={`${row.description}-${index}`} className="flex justify-between gap-2 border-b border-white py-1 last:border-0"><span className="truncate">{row.description}</span><span>{currency.format(row.amount)}</span></div>)}{rows.length > 4 && <p className="pt-1">+ {rows.length - 4} more rows</p>}</div><Button className="mt-3 w-full bg-[#183f32]" onClick={() => { onImport(rows); setRows([]); }}>Import reviewed rows</Button></>}</FeatureCard>;
+function BankImportCard({ onImport }: { onImport: (rows: ImportRow[]) => Promise<boolean | undefined> }) {
+ const [rows,setRows]=useState<ImportRow[]>([]),[status,setStatus]=useState(''),[busy,setBusy]=useState(false);
+ const parse=async(file:File)=>{setRows([]);setStatus('');try{if(file.size>2_000_000)throw new Error('Choose a CSV smaller than 2 MB.');const table=readCsv(await file.text());const headers=(table.shift()||[]).map(h=>h.toLowerCase().replace(/[^a-z]/g,''));const output:ImportRow[]=[];let skipped=0;const seen=new Set<string>();
+ for(const values of table){const get=(...names:string[])=>values[headers.findIndex(h=>names.includes(h))]||'';const debit=Number(get('debit','withdrawal').replaceAll(',','')),credit=Number(get('credit','deposit').replaceAll(',',''));const raw=Number(get('amount','amountinr').replace(/[₹$,]/g,''));const amount=Math.abs(raw||debit||credit);const explicit=get('type','transactiontype').toLowerCase();const type:TransactionType=explicit==='savings'?'savings':['income','credit','deposit'].includes(explicit)||(!explicit&&credit>0&&!debit)?'income':'expense';const occurredOn=get('date','occurredon','transactiondate');const description=get('description','name','merchant','narration');
+ const key=JSON.stringify([description,amount,occurredOn,type,get('account')||'Bank account']);if(!Number.isFinite(amount)||amount<=0||!description||!validDate(occurredOn)||seen.has(key)){skipped++;continue;}seen.add(key);output.push({description,amount,occurredOn,type,category:get('category')||'Personal',account:get('account')||'Bank account',paymentMethod:get('paymentmethod','method')||'Bank transfer'});}
+ if(output.length>500)throw new Error('Import at most 500 valid rows per file.');setRows(output);setStatus(`${output.length} ready; ${skipped} invalid or duplicate rows skipped. Dates must use YYYY-MM-DD.`);
+ }catch(e){setStatus((e as Error).message);}};
+ return <FeatureCard number={1} title="Bank statement import" description="Preview CSV transactions before saving. Existing duplicates are skipped." icon={PlugZap} status="Review before import" tone="live"><label className="block text-sm">CSV file<Input type="file" accept=".csv,text/csv" disabled={busy} onChange={e=>{const f=e.target.files?.[0];if(f)void parse(f);}}/></label><p className="mt-2 text-sm" role="status">{status||'Columns: Date, Description, Amount, Type. Or use separate Debit and Credit columns.'}</p>{rows.length>0&&<><div className="mt-3 max-h-64 overflow-auto"><table className="w-full text-sm"><thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Amount</th></tr></thead><tbody>{rows.map((r,i)=><tr key={i}><td>{r.occurredOn}</td><td>{r.description}</td><td>{r.type}</td><td>{currency.format(r.amount)}</td></tr>)}</tbody></table></div><Button disabled={busy} className="mt-3" onClick={async()=>{setBusy(true);try{if(await onImport(rows)){setRows([]);setStatus('Import completed. Existing duplicates were skipped.');}else setStatus('Import failed. Your preview is retained; retry when connected.');}finally{setBusy(false);}}}>{busy?'Importing…':`Import ${rows.length} reviewed rows`}</Button></>}</FeatureCard>;
 }
 
 function UploadIcon() { return <Upload className="mx-auto mb-1 size-4 text-[#ecf4ed]" />; }

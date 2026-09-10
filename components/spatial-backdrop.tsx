@@ -6,7 +6,11 @@ import { Button } from '@/components/ui/button';
 
 const models: Record<string, string> = { overview: 'campus-core', transactions: 'transactions', budgets: 'budgets', goals: 'goals', accounts: 'accounts', college: 'college', toolkit: 'toolkit', reports: 'reports', settings: 'campus-core', admin: 'accounts' };
 
-export function SpatialBackdrop({ view }: { view: string }) {
+export function SpatialBackdrop({ view, goalProgress = 0 }: { view: string; goalProgress?: number }) {
+  const progress = useRef(goalProgress);
+  useEffect(()=>{progress.current=goalProgress;choose.current(active.current);},[goalProgress]);
+  const [lightMode,setLightMode]=useState(false);
+  useEffect(()=>{setLightMode(localStorage.getItem('campus-visual-mode')==='light');},[]);
   const host = useRef<HTMLDivElement>(null);
   const active = useRef(view);
   const choose = useRef<(view: string) => void>(() => {});
@@ -17,6 +21,7 @@ export function SpatialBackdrop({ view }: { view: string }) {
   useEffect(() => { pausedRef.current = paused; }, [paused]);
 
   useEffect(() => {
+    if(lightMode) {setReady(false);return;}
     const element = host.current;
     if (!element) return;
     let disposed = false, cleanup = () => {};
@@ -47,6 +52,11 @@ export function SpatialBackdrop({ view }: { view: string }) {
       const anchor = new T.Group(); scene.add(anchor);
       const cache = new Map<string, import('three').Group>();
       const loading = new Set<string>();
+      const coinBurst = new T.Group();anchor.add(coinBurst);
+      const coinGeometry=new T.CylinderGeometry(.11,.11,.035,20),coinMaterial=new T.MeshStandardMaterial({color:'#edc879',metalness:.85,roughness:.22});
+      for(let i=0;i<12;i++){const coin=new T.Mesh(coinGeometry,coinMaterial);coinBurst.add(coin);}coinBurst.visible=false;
+      let celebration = 0;
+      const celebrate=()=>{celebration=1;};window.addEventListener('campus-celebrate',celebrate);
       let target = '', dirty = true;
       const disposeModel = (object: import('three').Object3D) => object.traverse(o => { if (o instanceof T.Mesh || o instanceof T.Line || o instanceof T.Points) { o.geometry.dispose(); (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.dispose()); } });
       const loader = new GLTFLoader();
@@ -57,7 +67,7 @@ export function SpatialBackdrop({ view }: { view: string }) {
         loader.load(`/3d/${id}.glb`, gltf => {
           loading.delete(id);
           if (disposed) { disposeModel(gltf.scene); return; }
-          const object = gltf.scene; object.scale.setScalar(.001); object.rotation.set(.1, -.26, -.1); anchor.add(object); cache.set(id, object); dirty = true; setReady(true);
+          const object = gltf.scene; let meshIndex=0;object.traverse(o=>{if(o instanceof T.Mesh){o.userData.home=o.position.clone();o.userData.piece=meshIndex++;}});object.userData.pieces=meshIndex; object.scale.setScalar(.001); object.rotation.set(.1, -.26, -.1); anchor.add(object); cache.set(id, object); dirty = true; setReady(true);
         }, undefined, () => { loading.delete(id); });
       };
       choose.current(active.current);
@@ -89,6 +99,7 @@ export function SpatialBackdrop({ view }: { view: string }) {
         cache.forEach((object, id) => {
           const desired = id === target ? (id === 'campus-core' ? 1.15 : 1.30) : .001;
           const scale = pausedRef.current ? desired : T.MathUtils.damp(object.scale.x, desired, 5, dt);
+          if(id==='goals') object.traverse(o=>{if(o instanceof T.Mesh && o.userData.home){const fraction=o.userData.piece/Math.max(1,object.userData.pieces);const assembly=Math.max(0,fraction-progress.current);o.position.copy(o.userData.home);o.position.y+=assembly*2.5;o.position.x+=assembly*(o.userData.piece%2?1:-1);}});
           object.scale.setScalar(scale); object.visible = scale > .01;
           if (Math.abs(scale - desired) > .002) transitioning = true;
           if (!pausedRef.current && object.visible) {
@@ -99,16 +110,17 @@ export function SpatialBackdrop({ view }: { view: string }) {
           }
         });
         if (!pausedRef.current) { t += dt; particles.rotation.y = t * .006; orbit.rotation.y = t * .035; camera.position.x = T.MathUtils.damp(camera.position.x, px * .16, 2, dt); camera.position.y = T.MathUtils.damp(camera.position.y, -py * .12, 2, dt); camera.lookAt(0, 0, 0); }
+        if(!pausedRef.current){celebration=Math.max(0,celebration-dt*.8);coinBurst.visible=celebration>0;coinBurst.children.forEach((coin,i)=>{const angle=i/12*Math.PI*2;const radius=(1-celebration)*3;coin.position.set(Math.cos(angle)*radius,Math.sin(angle)*radius+1,2);coin.rotation.set(celebration*8,i,0);coin.scale.setScalar(celebration);});rim.intensity=38+celebration*65;orbit.scale.setScalar(1+celebration*.15);}
         composer.render(); dirty = transitioning;
       };
       frame = requestAnimationFrame(draw);
       const lost = (e: Event) => { e.preventDefault(); cancelAnimationFrame(frame); setReady(false); };
       renderer.domElement.addEventListener('webglcontextlost', lost);
-      cleanup = () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('pointermove', pointer); renderer.domElement.removeEventListener('webglcontextlost', lost); disposeModel(scene); environment.dispose(); bloom.dispose(); composer.dispose(); renderer.dispose(); renderer.domElement.remove(); choose.current = () => {}; };
+      cleanup = () => { window.removeEventListener('campus-celebrate',celebrate);cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('pointermove', pointer); renderer.domElement.removeEventListener('webglcontextlost', lost); disposeModel(scene); environment.dispose(); bloom.dispose(); composer.dispose(); renderer.dispose(); renderer.domElement.remove(); choose.current = () => {}; };
     }
     setup().catch(() => setReady(false));
     return () => { disposed = true; cleanup(); motion.removeEventListener('change', motionChanged); };
-  }, []);
+  }, [lightMode]);
 
-  return <><div className={`spatial-backdrop ${ready ? 'is-ready' : ''}`} ref={host} aria-hidden="true" /><div className="spatial-atmosphere" aria-hidden="true" /><Button className="spatial-motion" variant="outline" size="sm" onClick={() => setPaused(!paused)} aria-label={paused ? 'Resume 3D motion' : 'Pause 3D motion'}>{paused ? <Play /> : <Pause />}<span>{paused ? 'Motion paused' : '3D motion'}</span></Button></>;
+  return <><div className={`spatial-backdrop ${ready ? 'is-ready' : ''}`} ref={host} aria-hidden="true" /><div className="spatial-atmosphere" aria-hidden="true" /><div className="spatial-controls"><Button variant="outline" size="sm" onClick={()=>{localStorage.setItem('campus-visual-mode',lightMode?'full':'light');setLightMode(!lightMode);window.dispatchEvent(new Event('campus-quality'));}}>{lightMode?'Enable 3D':'Light mode'}</Button><Button className="spatial-motion" variant="outline" size="sm" onClick={() => setPaused(!paused)} aria-label={paused ? 'Resume 3D motion' : 'Pause 3D motion'}>{paused ? <Play /> : <Pause />}<span>{paused ? 'Motion paused' : '3D motion'}</span></Button></div></>;
 }

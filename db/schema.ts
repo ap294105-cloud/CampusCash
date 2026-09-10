@@ -6,6 +6,11 @@ import {
   text,
 } from 'drizzle-orm/sqlite-core';
 
+export const plannerItems = sqliteTable('student_planner_items', {
+  id: text('id').primaryKey(), userId: text('user_id').notNull(),
+  kind: text('kind').notNull(), payload: text('payload').notNull(),
+}, table => [index('idx_planner_user').on(table.userId)]);
+
 export const transactions = sqliteTable(
   'transactions',
   {

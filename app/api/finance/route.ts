@@ -1,3 +1,4 @@
+import { validDate } from '@/lib/student-planner';
 import { env } from 'cloudflare:workers';
 
 import { getChatGPTUser, type ChatGPTUser } from '@/app/chatgpt-auth';
@@ -310,8 +311,8 @@ export async function POST(request: Request) {
     if (action === 'bulkTransactions') {
       const rows = Array.isArray(body.rows) ? body.rows : [];
       if (rows.length > 500) return Response.json({ error: 'Please import 500 rows or fewer at a time.' }, { status: 400 });
-      const existing = await db.prepare('SELECT description, amount_paise, occurred_on FROM student_transactions WHERE user_id = ?').bind(user.userId).all<{ description: string; amount_paise: number; occurred_on: string }>();
-      const known = new Set(existing.results.map((row) => `${row.description}|${row.amount_paise}|${row.occurred_on}`));
+      const existing = await db.prepare('SELECT description, amount_paise, occurred_on, type, account FROM student_transactions WHERE user_id = ?').bind(user.userId).all<{ description: string; amount_paise: number; occurred_on: string; type:string; account:string }>();
+      const known = new Set(existing.results.map((row) => JSON.stringify([row.description,row.amount_paise,row.occurred_on,row.type,row.account])));
       const statements = rows.flatMap((row) => {
         const item = row as Record<string, unknown>;
         const description = String(item.description ?? '').trim();
@@ -319,9 +320,9 @@ export async function POST(request: Request) {
         const occurredOn = String(item.occurredOn ?? '').trim();
         const type = String(item.type ?? 'expense');
         const category = String(item.category ?? 'Personal').trim() || 'Personal';
-        if (!description || !Number.isFinite(amount) || amount <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(occurredOn) || !['income', 'expense', 'savings'].includes(type)) return [];
+        if (!description || !Number.isFinite(amount) || amount <= 0 || !validDate(occurredOn) || !['income', 'expense', 'savings'].includes(type)) return [];
         const amountPaise = Math.round(amount * 100);
-        const key = `${description}|${amountPaise}|${occurredOn}`;
+        const key = JSON.stringify([description,amountPaise,occurredOn,type,String(item.account ?? 'Bank account')]);
         if (known.has(key)) return [];
         known.add(key);
         return [db.prepare(`INSERT INTO student_transactions (id, user_id, description, amount_paise, type, category, occurred_on, account, payment_method, note, is_demo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`).bind(crypto.randomUUID(), user.userId, description, amountPaise, type, category, occurredOn, String(item.account ?? 'Bank account'), String(item.paymentMethod ?? 'Bank transfer'), 'Imported from CSV', new Date().toISOString())];
@@ -456,6 +457,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'deleteMyData') {
+      await db.prepare('DELETE FROM student_planner_items WHERE user_id = ?').bind(user.userId).run();
       await db.batch([
         db.prepare('DELETE FROM student_transactions WHERE user_id = ?').bind(user.userId),
         db.prepare('DELETE FROM student_budgets WHERE user_id = ?').bind(user.userId),
