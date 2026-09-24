@@ -192,6 +192,9 @@ export async function GET(request: Request) {
   if (!user) {
     return Response.json({ error: 'Authentication required.' }, { status: 401 });
   }
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_account_controls (user_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT \'active\', role TEXT NOT NULL DEFAULT \'student\', updated_at TEXT NOT NULL)').run();
+  const access = await env.DB.prepare('SELECT status FROM admin_account_controls WHERE user_id = ?').bind(user.userId).first<{ status: string }>();
+  if (access?.status === 'suspended' || access?.status === 'deactivated') return Response.json({ error: `This account is ${access.status}. Contact your campus administrator.` }, { status: 403 });
 
   try {
     await ensureStudentWorkspace(user);
@@ -257,6 +260,9 @@ export async function POST(request: Request) {
   if (!user) {
     return Response.json({ error: 'Authentication required.' }, { status: 401 });
   }
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS admin_account_controls (user_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT \'active\', role TEXT NOT NULL DEFAULT \'student\', updated_at TEXT NOT NULL)').run();
+  const access = await env.DB.prepare('SELECT status FROM admin_account_controls WHERE user_id = ?').bind(user.userId).first<{ status: string }>();
+  if (access?.status === 'suspended' || access?.status === 'deactivated') return Response.json({ error: `This account is ${access.status}. Contact your campus administrator.` }, { status: 403 });
 
   try {
     await ensureStudentWorkspace(user);

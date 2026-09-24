@@ -198,3 +198,4 @@ button[class*="bg-[#183f32]"]{color:#e9f5eb!important;border-color:#6da17855;box
 @media(max-width:900px){.daily-grid{grid-template-columns:1fr}.spatial-controls{bottom:135px;right:12px}.spatial-app{padding-bottom:150px}.upgrade-card{padding:18px}.spatial-heading{min-height:initial!important}.spatial-workspace{padding-bottom:30px}}
 @media(max-width:500px){.campus-links{grid-template-columns:1fr 1fr}.upgrade-form{gap:10px}.upgrade-form label{font-size:.875rem}.spatial-controls button{font-size:.75rem}.share-row button{min-height:44px}}
 @media(prefers-reduced-motion:reduce){.spatial-page{animation:none!important}*{scroll-behavior:auto!important}}
+.audit-chart{height:96px;display:flex;align-items:end;gap:12px;border-bottom:1px solid #315348;padding:12px 8px}.audit-bar{flex:1;min-height:10px;border-radius:8px 8px 0 0;background:linear-gradient(#eac491,#4a8c6d);transition:height .25s ease}
