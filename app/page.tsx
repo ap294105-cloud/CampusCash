@@ -850,7 +850,7 @@ function MetricCard({ label, value, meta, icon: Icon, tone }: { label: string; v
   return <article className={`rounded-2xl border border-[#29473e] p-5 shadow-[0_10px_30px_rgba(24,62,54,0.04)] ${tone}`}><div className="flex items-center justify-between"><p className={`text-sm ${dark ? 'text-white/65' : 'text-[#a2bcb0]'}`}>{label}</p><Icon className={`size-4 ${dark ? 'text-[#eac491]' : 'text-[#74d4ae]'}`} /></div><p className="mt-4 text-2xl font-semibold tracking-tight">{value}</p><p className={`mt-1 text-xs ${dark ? 'text-white/55' : 'text-[#a2bcb0]'}`}>{meta}</p></article>;
 }
 
-function MiniStat({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Target }) {
+function MiniStat({ label, value, icon: Icon }: { label: string; value: string; icon: React.ComponentType<{ className?: string }> }) {
   return <article className="flex items-center gap-4 rounded-2xl border border-[#29473e] bg-[#10271f] p-5"><div className="grid size-11 place-items-center rounded-xl bg-[#122b24] text-[#ecf4ed]"><Icon className="size-5" /></div><div><p className="text-xs text-[#a2bcb0]">{label}</p><p className="mt-1 text-xl font-semibold">{value}</p></div></article>;
 }
 
