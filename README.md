@@ -6,6 +6,8 @@ Campus Cash is a student finance workspace for tracking spending, planning budge
 
 [Open Campus Cash](https://campus-cash-student-budget.ap294105.chatgpt.site)
 
+Netlify alias: <https://campus-cash-e4c38212.netlify.app>
+
 ## Features
 
 - Transaction, income, savings, and account tracking
