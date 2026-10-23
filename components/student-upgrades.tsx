@@ -6,8 +6,9 @@ import { Input } from '@/components/ui/input';
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 import { billReserve, splitShares, type PlannerItem } from '@/lib/student-planner';
 import { CalendarClock, Users, Plus, Check, Download, Trash2 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 const money = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(n / 100);
-type Data = { transactions: { amountPaise: number; type: string; category: string; occurredOn: string }[]; goals: { name: string; targetPaise: number; currentPaise: number; deadline: string }[]; accounts: { name: string; type: string; balancePaise: number }[]; budgets: { monthlyLimitPaise: number }[] };
+type Data = { transactions: { amountPaise: number; type: string; category: string; occurredOn: string; description?: string; paymentMethod?: string; account?: string }[]; goals: { name: string; targetPaise: number; currentPaise: number; deadline: string }[]; accounts: { name: string; type: string; balancePaise: number }[]; budgets: { monthlyLimitPaise: number }[] };
 const dateNow = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
 
 export function StudentUpgrades({ data, userKey, onRefresh, onNavigate, view }: { data: Data; userKey: string; onRefresh: () => Promise<void>; onNavigate: (v: any) => void; view: string }) {
@@ -33,7 +34,7 @@ export function StudentUpgrades({ data, userKey, onRefresh, onNavigate, view }: 
     return <section className="student-upgrades" aria-label="Student daily planner">
         {error && <div role="alert" className="upgrade-error">{error} <Button variant="outline" onClick={() => void load()}>Retry</Button></div>}
         {view === 'overview' && <>
-            <div className="daily-grid"><div className="upgrade-card daily-allowance"><p className="spatial-kicker">SAFE TO SPEND TODAY</p><h2>{loaded ? money(Math.floor(available / days)) : '—'}<small> / day</small></h2><p>{days} days left this month · based on logged income</p><details><summary>How your allowance is calculated</summary><p>Income minus expenses and savings, capped by your remaining budget. Then reserve {money(reserved)} for unpaid bills through month-end and {money(goalPlan)} toward unfinished savings goals. Divide the remainder by {days} days. Unlogged income and account balances are excluded.</p></details></div><QuickExpense accounts={data.accounts} userKey={userKey} onRefresh={onRefresh} /></div>
+            <div className="daily-grid"><div className="upgrade-card daily-allowance"><p className="spatial-kicker">SAFE TO SPEND TODAY</p><h2>{loaded ? money(Math.floor(available / days)) : '—'}<small> / day</small></h2><p>{days} days left this month · based on logged income</p><details><summary>How your allowance is calculated</summary><p>Income minus expenses and savings, capped by your remaining budget. Then reserve {money(reserved)} for unpaid bills through month-end and {money(goalPlan)} toward unfinished savings goals. Divide the remainder by {days} days. Unlogged income and account balances are excluded.</p></details><ExcelSyncButton data={data} /></div><QuickExpense accounts={data.accounts} userKey={userKey} onRefresh={onRefresh} /></div>
             <CampusExplorer onNavigate={onNavigate} />
             {due.length > 0 && <div className="bill-reminder"><CalendarClock /><span>{due.filter(b => b.due <= today).length || due.length} {due.some(b => b.due <= today) ? 'bill(s) due or overdue' : 'upcoming bill(s)'} · Next: {due[0].name}, {money(due[0].amountPaise)} on {due[0].due}</span><Button variant="outline" onClick={() => onNavigate('toolkit')}>Review bills</Button></div>}
         </>}
@@ -61,4 +62,13 @@ function InstallApp() {
     const [install, setInstall] = useState<any>(null), [status, setStatus] = useState('Use your browser menu → Install app or Add to Home Screen.');
     useEffect(() => { const handler = (e: Event) => { e.preventDefault(); setInstall(e); }; window.addEventListener('beforeinstallprompt', handler); return () => window.removeEventListener('beforeinstallprompt', handler); }, []);
     return <div className="upgrade-card"><h2>Campus Cash on your phone</h2><p>{status}</p>{install && <Button onClick={async () => { await install.prompt(); const choice = await install.userChoice; setStatus(choice.outcome === 'accepted' ? 'Installation requested.' : 'You can install later from your browser menu.'); setInstall(null); }}><Download />Install Campus Cash</Button>}<p>Offline mode lets you keep an expense draft. Reconnect and sign in to save it to your workspace.</p></div>;
+}
+
+function ExcelSyncButton({ data }: { data: Data }) {
+ const [status, setStatus] = useState('');
+ const download = async () => { setStatus('Filling workbook…'); try { const response = await fetch('/College_Student_Budget_and_Finance_Dashboard.xlsx'); if (!response.ok) throw new Error('Template unavailable.'); const book = XLSX.read(await response.arrayBuffer(), { type: 'array', cellStyles: true }); const sheet = book.Sheets['QUICK ENTRY']; if (!sheet) throw new Error('Template QUICK ENTRY sheet is missing.');
+  for (let row = 8; row <= 1007; row++) for (const col of ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'I', 'L', 'O']) delete sheet[`${col}${row}`];
+  data.transactions.slice(0, 1000).forEach((item, index) => { const row = 8 + index; const values: Record<string, unknown> = { A: 'Yes', B: item.occurredOn, C: item.type === 'income' ? 'Income' : item.type === 'savings' ? 'Savings Transfer' : 'Expense', D: item.description, E: item.amountPaise / 100, F: item.paymentMethod, G: item.category, I: item.category, L: item.account, O: 'Paid' }; Object.entries(values).forEach(([col, value]) => { sheet[`${col}${row}`] = { t: typeof value === 'number' ? 'n' : 's', v: value }; }); });
+  XLSX.writeFile(book, 'Campus-Cash-Finance-Dashboard.xlsx'); setStatus(`${Math.min(data.transactions.length, 1000)} saved transactions exported.`); } catch (error) { setStatus(error instanceof Error ? error.message : 'Workbook export failed.'); } };
+ return <div className="mt-4 flex flex-wrap items-center gap-3"><Button variant="outline" onClick={() => void download}><Download />Fill Excel workbook</Button><span className="text-xs text-[#b3cbbf]">Downloads the attached template with your saved transactions.</span>{status && <span role="status" className="text-xs text-[#eac491]">{status}</span>}</div>;
 }
