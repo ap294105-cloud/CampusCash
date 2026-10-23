@@ -2,7 +2,9 @@
 
 Campus Cash is a student finance workspace for tracking spending, planning budgets, saving toward goals, and understanding college costs. It combines a practical finance dashboard with an interactive Three.js campus scene.
 
-Live site: <https://campus-cash-student-budget.ap294105.chatgpt.site>
+## Live demo
+
+[Open Campus Cash](https://campus-cash-student-budget.ap294105.chatgpt.site)
 
 ## Features
 
